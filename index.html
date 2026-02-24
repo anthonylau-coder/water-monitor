@@ -2,33 +2,96 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>水位監控 - 現場測試版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>水位監控 - 專業 DEMO</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
     <style>
-        body { font-family: 'Courier New', Courier, monospace; background: #000; color: #fff; margin: 0; padding: 20px; transition: background 0.1s; }
-        .data-item { margin-bottom: 40px; border-bottom: 1px solid #222; padding-bottom: 20px; }
-        .label { font-size: 20px; color: #888; letter-spacing: 1px; }
-        .value-row { display: flex; align-items: baseline; gap: 15px; flex-wrap: wrap; }
-        .value { font-size: 100px; font-weight: bold; color: #00ff00; line-height: 1; }
-        .unit { font-size: 30px; color: #00ff00; margin-right: 10px; }
-        .time { font-size: 16px; color: #555; font-style: italic; }
-        .status-bar { position: sticky; top: 0; padding: 8px; font-size: 14px; text-align: center; margin-bottom: 20px; border-radius: 4px; }
-        .online { background: #004400; color: #00ff00; }
-        .offline { background: #440000; color: #ff0000; }
+        body { 
+            font-family: 'Courier New', Courier, monospace; 
+            background: #000; 
+            color: #fff; 
+            margin: 0; 
+            padding: 20px; 
+            transition: background 0.1s; 
+            overflow: hidden; 
+            cursor: pointer; 
+        }
+
+        /* 調整間距，配合壓扁咗嘅文字 */
+        .data-item { 
+            margin-bottom: 25px; 
+            border-bottom: 1px solid #1a1a1a; 
+            padding-bottom: 15px; 
+        }
+
+        .label { 
+            font-size: 18px; 
+            color: #666; 
+            letter-spacing: 1px; 
+            font-weight: bold; 
+            text-transform: uppercase;
+        }
+
+        .value-row { 
+            display: flex; 
+            align-items: baseline; 
+            gap: 15px; 
+            flex-wrap: wrap; 
+            margin-top: 5px; 
+        }
+
+        /* 核心修改：高度壓扁 25% (scaleY 0.75) */
+        .value { 
+            font-size: 115px; 
+            font-weight: bold; 
+            color: #00ff00; 
+            line-height: 1; 
+            text-shadow: 0 0 15px rgba(0,255,0,0.3);
+            display: inline-block;
+            transform: scaleY(0.75); 
+            transform-origin: bottom left; /* 確保對齊左下角 */
+        }
+
+        .unit { 
+            font-size: 35px; 
+            color: #00ff00; 
+            margin-right: 10px; 
+            display: inline-block;
+            transform: scaleY(0.8); /* 單位都稍微壓扁少少，視覺更統一 */
+        }
+
+        .time { 
+            font-size: 14px; 
+            color: #444; 
+            font-style: italic; 
+            margin-top: -5px; /* 因為字壓扁咗，將時間向上移返少少 */
+        }
+        
+        /* 頂部隱藏式狀態線 */
+        .status-bar { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 4px; 
+            transition: background 0.3s; 
+            z-index: 9999; 
+        }
+        .online { background: #00ff00; box-shadow: 0 0 10px #00ff00; }
+        .offline { background: #ff0000; }
     </style>
 </head>
-<body>
+<body onclick="toggleFullScreen()">
 
-    <div id="status" class="status-bar offline">等待連線...</div>
+    <div id="status" class="status-bar offline"></div>
 
     <div class="data-item">
         <div class="label">WATER LEVEL (水位深度)</div>
         <div class="value-row">
             <div id="level" class="value">0.000</div>
             <div class="unit">M</div>
-            <div id="time_level" class="time">Update: --:--:--</div>
         </div>
+        <div id="time_level" class="time">Update: --:--:--</div>
     </div>
 
     <div class="data-item">
@@ -36,8 +99,8 @@
         <div class="value-row">
             <div id="temp" class="value">00.0</div>
             <div class="unit">°C</div>
-            <div id="time_temp" class="time">Update: --:--:--</div>
         </div>
+        <div id="time_temp" class="time">Update: --:--:--</div>
     </div>
 
     <div class="data-item">
@@ -45,82 +108,4 @@
         <div class="value-row">
             <div id="signal" class="value">--</div>
             <div class="unit">dBm</div>
-            <div id="time_sig" class="time">Update: --:--:--</div>
         </div>
-    </div>
-
-    <div class="data-item">
-        <div class="label">SENSOR VOLTAGE (電壓)</div>
-        <div class="value-row">
-            <div id="voltage" class="value">0.00</div>
-            <div class="unit">V</div>
-            <div id="time_vol" class="time">Update: --:--:--</div>
-        </div>
-    </div>
-
-    <script>
-        // --- 你的連線設定 (已根據你之前的圖片填好) ---
-        const config = {
-            host: 'af11f11a.ala.asia-southeast1.emqxsl.com', 
-            port: 8084, 
-            user: 'test', 
-            pass: 'test1234' // <--- 確保呢個係你重設後嘅密碼
-        };
-
-        const client = mqtt.connect(`wss://${config.host}:${config.port}/mqtt`, {
-            clientId: 'Monitor_' + Math.random().toString(16).slice(2, 8),
-            username: config.user,
-            password: config.pass,
-            protocolVersion: 4
-        });
-
-        client.on('connect', () => {
-            document.getElementById('status').innerText = "● 系統在線 | 正在監控設備數據";
-            document.getElementById('status').className = "status-bar online";
-            client.subscribe("/outerAccess/subWaterLevelTopic");
-        });
-
-        client.on('message', (topic, message) => {
-            try {
-                const data = JSON.parse(message.toString());
-                const now = new Date().toLocaleTimeString('zh-HK', { hour12: false });
-
-                // 更新數據
-                document.getElementById('level').innerText = data.waterLevel;
-                document.getElementById('temp').innerText = data.waterTemperature;
-                document.getElementById('signal').innerText = data.signalStrength;
-                document.getElementById('voltage').innerText = data.sensorVoltage;
-
-                // 更新時間戳
-                const timeStr = "Update: " + now;
-                document.getElementById('time_level').innerText = timeStr;
-                document.getElementById('time_temp').innerText = timeStr;
-                document.getElementById('time_sig').innerText = timeStr;
-                document.getElementById('time_vol').innerText = timeStr;
-
-                // --- 背景閃爍效果 (拍片反饋) ---
-                document.body.style.background = "#052005"; 
-                setTimeout(() => { document.body.style.background = "#000"; }, 100);
-
-                // --- 自動回應設備 (嚴格遵守協議) ---
-                const responseTopic = `/outerAccess/pubWaterLevelTopic/${data.deviceCode}`;
-                const responsePayload = {
-                    "msg": "接收消息成功",
-                    "collectionTime": data.collectionTime,
-                    "code": 200,
-                    "deviceCode": data.deviceCode
-                };
-                client.publish(responseTopic, JSON.stringify(responsePayload));
-                
-            } catch (e) {
-                console.error("解析錯誤:", e);
-            }
-        });
-
-        client.on('offline', () => {
-            document.getElementById('status').innerText = "● 連線中斷";
-            document.getElementById('status').className = "status-bar offline";
-        });
-    </script>
-</body>
-</html>
