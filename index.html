@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水位機現場測試 - 大字版</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+    <style>
+        body { font-family: 'Courier New', Courier, monospace; background: #000; color: #fff; margin: 0; padding: 40px; }
+        .data-item { margin-bottom: 60px; }
+        .label { font-size: 24px; color: #aaa; text-transform: uppercase; letter-spacing: 2px; }
+        .value-row { display: flex; align-items: baseline; gap: 20px; }
+        .value { font-size: 120px; font-weight: bold; color: #00ff00; } /* 螢光綠大字 */
+        .unit { font-size: 40px; color: #00ff00; }
+        .time { font-size: 18px; color: #666; font-style: italic; }
+        .status-bar { position: fixed; top: 0; left: 0; width: 100%; padding: 10px; font-size: 14px; text-align: center; }
+        .online { background: #004400; color: #00ff00; }
+        .offline { background: #440000; color: #ff0000; }
+    </style>
+</head>
+<body>
+
+    <div id="status" class="status-bar offline">等待 MQTT 連線...</div>
+
+    <div class="data-item">
+        <div class="label">Water Level (淹水深度)</div>
+        <div class="value-row">
+            <div id="level" class="value">0.000</div>
+            <div class="unit">M</div>
+            <div id="time_level" class="time">--:--:--</div>
+        </div>
+    </div>
+
+    <div class="data-item">
+        <div class="label">Temperature (水溫)</div>
+        <div class="value-row">
+            <div id="temp" class="value">00.0</div>
+            <div class="unit">°C</div>
+            <div id="time_temp" class="time">--:--:--</div>
+        </div>
+    </div>
+
+    <div class="data-item">
+        <div class="label">Sensor Voltage (電壓)</div>
+        <div class="value-row">
+            <div id="voltage" class="value">0.00</div>
+            <div class="unit">V</div>
+            <div id="time_vol" class="time">--:--:--</div>
+        </div>
+    </div>
+
+    <script>
+        // --- 請填入你的 MQTT Broker 資料 ---
+        const config = {
+    host: 'af11f11a.ala.asia-southeast1.emqxsl.com', 
+    port: 8084, 
+    user: 'test',     // 必須係全細寫 test
+    pass: 'test1234'  // 必須同你啱啱 Edit 嗰陣打嘅一模一樣
+};
+
+        const client = mqtt.connect(`wss://${config.host}:${config.port}/mqtt`, {
+    clientId: 'Web_Demo_' + Math.random().toString(16).slice(2, 8),
+    username: config.user,
+    password: config.pass,
+    protocolVersion: 4,
+    clean: true
+});
+
+client.on('connect', () => {
+    console.log("連線成功！");
+    document.getElementById('status').innerText = "● 系統在線 | 正在監控設備數據";
+    document.getElementById('status').className = "status-bar online";
+    client.subscribe("/outerAccess/subWaterLevelTopic");
+});
+
+client.on('error', (err) => {
+    console.log("連線出錯: ", err);
+});
+
+        client.on('message', (topic, message) => {
+            const data = JSON.parse(message.toString());
+            const now = new Date().toLocaleTimeString(); // 獲取本地當前時間
+
+            // 更新大字數據
+            document.getElementById('level').innerText = data.waterLevel;
+            document.getElementById('temp').innerText = data.waterTemperature;
+            document.getElementById('voltage').innerText = data.sensorVoltage;
+
+            // 更新數據旁的細字時間
+            document.getElementById('time_level').innerText = "Update: " + now;
+            document.getElementById('time_temp').innerText = "Update: " + now;
+            document.getElementById('time_vol').innerText = "Update: " + now;
+
+            // --- 自動回覆邏輯  ---
+            const responseTopic = "/outerAccess/pubWaterLevelTopic/" + data.deviceCode;
+            const responsePayload = {
+                "msg": "接收消息成功",
+                "collectionTime": data.collectionTime,
+                "code": 200,
+                "deviceCode": data.deviceCode
+            };
+            client.publish(responseTopic, JSON.stringify(responsePayload));
+        });
+
+        client.on('offline', () => {
+            document.getElementById('status').innerText = "● 連線中斷";
+            document.getElementById('status').className = "status-bar offline";
+        });
+    </script>
+</body>
+</html>
