@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能水位監控系統 - V9 全數據版</title>
+    <title>智能水位監控系統 - V10 穩定版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -11,20 +11,14 @@
         .status-bar { padding: 10px; font-size: 14px; text-align: center; margin-bottom: 15px; border-radius: 8px; font-weight: bold; border: 1px solid transparent; }
         .online { background: rgba(0, 68, 0, 0.8); color: #00ff00; border-color: #00ff00; }
         .offline { background: rgba(68, 0, 0, 0.8); color: #ff0000; border-color: #ff0000; }
-        
-        /* 數值區間 */
         .main-display { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px; }
         .label { font-size: 12px; color: #888; letter-spacing: 1px; }
         .value-row { display: flex; align-items: baseline; }
         .value { font-size: 80px; font-weight: bold; color: #00ff00; transform: scale(0.9, 1); transform-origin: left; line-height: 1; }
         .unit { font-size: 24px; color: #00ff00; margin-left: 5px; }
-        
-        .secondary-display { display: flex; gap: 30px; margin-top: 5px; padding-bottom: 10px; border-bottom: 2px solid #222; }
         .temp-val { font-size: 30px; font-weight: bold; color: #00ffff; }
         .temp-unit { font-size: 16px; color: #00ffff; }
-
         .sub-data { display: flex; justify-content: space-between; font-size: 12px; color: #666; margin-top: 10px; }
-        
         #alarm-box { display: none; padding: 15px; margin: 15px 0; border-radius: 8px; text-align: center; font-size: 18px; font-weight: bold; box-shadow: 0 0 20px rgba(0,0,0,0.5); animation: blink 1.5s infinite; }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
         .chart-section { background: #111; padding: 10px; border-radius: 10px; margin-top: 15px; height: 250px; }
@@ -50,7 +44,7 @@
 
         <div class="sub-data">
             <span id="time_level">更新: --:--:--</span>
-            <span>訊號: <span id="sig_display">--</span> dBm | 電壓: <span id="vol_display">--</span> V</span>
+            <span>訊號: <span id="sig_display">--</span> dBm | 電壓: <span id="vol_display" style="font-weight:bold;">--</span> V</span>
         </div>
     </div>
 
@@ -60,7 +54,11 @@
 
     <script>
         const MQTT_CONFIG = { host: 'af11f11a.ala.asia-southeast1.emqxsl.com', port: 8084, user: 'test', pass: 'test1234', topic: '/outerAccess/subWaterLevelTopic' };
-        let alarmConfirmCount = 0;
+        
+        let waterConfirmCount = 0;
+        let volConfirmCount = 0;
+        let currentLevel = 0; // 當前水位等級 0-3
+        let currentVolAlarm = false;
 
         const ctx = document.getElementById('waterChart').getContext('2d');
         const waterChart = new Chart(ctx, {
@@ -69,7 +67,7 @@
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#444', font: {size: 10} } }, y: { beginAtZero: true, ticks: { color: '#444' }, grid: { color: '#222' } } } }
         });
 
-        const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`, { clientId: 'WEB_V9_' + Math.random().toString(16).slice(2, 8), username: MQTT_CONFIG.user, password: MQTT_CONFIG.pass });
+        const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`, { clientId: 'WEB_V10_' + Math.random().toString(16).slice(2, 8), username: MQTT_CONFIG.user, password: MQTT_CONFIG.pass });
 
         client.on('connect', () => {
             document.getElementById('status').innerText = "● 系統在線 (加密連線中)";
@@ -82,52 +80,72 @@
                 const data = JSON.parse(message.toString());
                 const timeStr = new Date().toLocaleTimeString('zh-HK', { hour12: false });
 
-                // 1. 水位與圖表
                 if (data.waterLevel !== undefined) {
                     const mm = Math.round(parseFloat(data.waterLevel) * 1000);
                     document.getElementById('level').innerText = mm;
                     document.getElementById('time_level').innerText = `更新: ${timeStr}`;
-                    
                     waterChart.data.labels.push(timeStr);
                     waterChart.data.datasets[0].data.push(mm);
-                    if (waterChart.data.labels.length > 100) { waterChart.data.labels.shift(); waterChart.data.datasets[0].data.shift(); }
+                    if (waterChart.data.labels.length > 200) { waterChart.data.labels.shift(); waterChart.data.datasets[0].data.shift(); }
                     waterChart.update();
-                    checkAlarmLogic(mm);
+                    updateWaterLogic(mm);
                 }
 
-                // 2. 溫度顯示
-                if (data.waterTemperature !== undefined) {
-                    document.getElementById('temp').innerText = parseFloat(data.waterTemperature).toFixed(1);
-                }
-
-                // 3. 訊號與電壓
+                if (data.waterTemperature !== undefined) document.getElementById('temp').innerText = parseFloat(data.waterTemperature).toFixed(1);
                 if (data.signalStrength !== undefined) document.getElementById('sig_display').innerText = data.signalStrength;
-                if (data.sensorVoltage !== undefined) document.getElementById('vol_display').innerText = data.sensorVoltage;
+                
+                if (data.sensorVoltage !== undefined) {
+                    const vol = parseFloat(data.sensorVoltage);
+                    document.getElementById('vol_display').innerText = vol.toFixed(2);
+                    updateVolLogic(vol);
+                }
+
+                renderAlarmUI(); // 統一渲染報警畫面
 
             } catch (e) { console.error(e); }
         });
 
-        function checkAlarmLogic(val) {
-            const box = document.getElementById('alarm-box');
-            let currentLv = 0;
-            if (val >= 300) currentLv = 3;
-            else if (val >= 120) currentLv = 2;
-            else if (val >= 70) currentLv = 1;
+        function updateWaterLogic(val) {
+            let lv = 0;
+            if (val >= 300) lv = 3;
+            else if (val >= 120) lv = 2;
+            else if (lv = (val >= 70 ? 1 : 0));
 
-            if (currentLv > 0) {
-                alarmConfirmCount++;
-            } else {
-                alarmConfirmCount = 0;
+            if (lv > 0) waterConfirmCount++;
+            else waterConfirmCount = 0;
+
+            currentLevel = (waterConfirmCount >= 2) ? lv : 0;
+        }
+
+        function updateVolLogic(vol) {
+            if (vol < 3.4) volConfirmCount++;
+            else volConfirmCount = 0;
+
+            currentVolAlarm = (volConfirmCount >= 2);
+            document.getElementById('vol_display').style.color = currentVolAlarm ? "#ff0" : "#666";
+        }
+
+        function renderAlarmUI() {
+            const box = document.getElementById('alarm-box');
+            
+            // 優先顯示水位警報
+            if (currentLevel > 0) {
+                box.style.display = "block";
+                if (currentLevel === 1) { box.innerText = "【警告】水位達 70mm (Lv.1)"; document.body.style.background = "#443300"; }
+                if (currentLevel === 2) { box.innerText = "【嚴重】水位達 120mm (Lv.2)"; document.body.style.background = "#663300"; }
+                if (currentLevel === 3) { box.innerText = "【危險】水位超過 300mm (Lv.3)"; document.body.style.background = "#660000"; }
+            } 
+            // 次要顯示低電量警報
+            else if (currentVolAlarm) {
+                box.style.display = "block";
+                box.innerText = "【注意】設備電池電量低 (" + document.getElementById('vol_display').innerText + "V)";
+                box.style.background = "#555500";
+                document.body.style.background = "#333300";
+            } 
+            // 無警報
+            else {
                 box.style.display = "none";
                 document.body.style.background = "#000";
-                return;
-            }
-
-            if (alarmConfirmCount >= 2) {
-                box.style.display = "block";
-                if (currentLv === 1) { box.innerText = "【警告】水位達 70mm (Lv.1)"; document.body.style.background = "#443300"; }
-                if (currentLv === 2) { box.innerText = "【嚴重】水位達 120mm (Lv.2)"; document.body.style.background = "#663300"; }
-                if (currentLv === 3) { box.innerText = "【危險】水位超過 300mm (Lv.3)"; document.body.style.background = "#660000"; }
             }
         }
     </script>
