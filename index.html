@@ -3,187 +3,225 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>水位監控 - 專業 DEMO</title>
+    <title>智能水位監控系統 - 專業版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { 
-            font-family: 'Courier New', Courier, monospace; 
-            background: #000; 
-            color: #fff; 
-            margin: 0; 
-            padding: 10px; 
-            transition: background 0.1s; 
-        }
+        body { font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif; background: #000; color: #fff; margin: 0; padding: 15px; transition: background 0.8s; }
+        .status-bar { padding: 10px; font-size: 14px; text-align: center; margin-bottom: 15px; border-radius: 8px; font-weight: bold; border: 1px solid transparent; }
+        .online { background: rgba(0, 68, 0, 0.8); color: #00ff00; border-color: #00ff00; }
+        .offline { background: rgba(68, 0, 0, 0.8); color: #ff0000; border-color: #ff0000; }
 
-        /* 回歸舊版狀態條：有背景色同文字 */
-        .status-bar { 
-            padding: 10px; 
-            font-size: 14px; 
-            text-align: center; 
-            margin-bottom: 20px; 
-            border-radius: 4px; 
-            font-weight: bold;
-        }
-        .online { background: #004400; color: #00ff00; border: 1px solid #00ff00; }
-        .offline { background: #440000; color: #ff0000; border: 1px solid #ff0000; }
+        /* 數值顯示 */
+        .main-display { border-bottom: 2px solid #222; padding-bottom: 10px; margin-bottom: 20px; }
+        .label { font-size: 12px; color: #aaa; letter-spacing: 1px; }
+        .value-row { display: flex; align-items: baseline; }
+        .value { font-size: 80px; font-weight: bold; color: #00ff00; transform: scale(0.9, 1); transform-origin: left; }
+        .unit { font-size: 24px; color: #00ff00; margin-left: 5px; }
+        .sub-data { display: flex; justify-content: space-between; font-size: 14px; color: #888; margin-top: 5px; }
 
-        .data-item { 
-            position: relative; 
-            margin-bottom: 20px; 
-            border-bottom: 1px solid #222; 
-            padding-bottom: 15px; 
+        /* 警報框 */
+        #alarm-box { 
+            display: none; padding: 15px; margin: 15px 0; border-radius: 8px; 
+            text-align: center; font-size: 18px; font-weight: bold; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.5); animation: blink 1.5s infinite;
         }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
 
-        .label { 
-            font-size: 14px; 
-            color: #888; 
-            font-weight: bold; 
-        }
-
-        .value-row { 
-            display: flex; 
-            align-items: baseline; 
-            gap: 8px; 
-            margin-top: 5px; 
-        }
-
-        /* 數字繼續保持壓扁比例 (0.85 寬 / 0.75 高) */
-        .value { 
-            font-size: 80px; 
-            font-weight: bold; 
-            color: #00ff00; 
-            line-height: 1; 
-            text-shadow: 0 0 10px rgba(0,255,0,0.2);
-            display: inline-block;
-            transform: scale(0.85, 0.75); 
-            transform-origin: left bottom; 
-            white-space: nowrap;
-        }
-
-        .unit { 
-            font-size: 20px; 
-            color: #00ff00; 
-            display: inline-block;
-            transform: scaleY(0.8);
-            margin-left: -10px;
-        }
-
-        /* Update 顯示在數據項右下角 */
-        .time { 
-            display: block;
-            font-size: 11px; 
-            color: #444; 
-            margin-top: -10px;
-            font-style: normal;
-        }
+        /* 圖表 */
+        .chart-section { background: #111; padding: 10px; border-radius: 10px; margin-top: 10px; height: 280px; }
     </style>
 </head>
 <body>
 
-    <div id="status" class="status-bar offline">等待連線...</div>
+    <div id="status" class="status-bar offline">系統初始化中...</div>
 
-    <div class="container">
-        <div class="data-item">
-            <div class="label">WATER LEVEL</div>
-            <div class="value-row">
-                <div id="level" class="value">0</div>
-                <div class="unit">mm</div>
-            </div>
-            <div id="time_level" class="time">Update: ----/--/-- --:--:--</div>
+    <div id="alarm-box"></div>
+
+    <div class="main-display">
+        <div class="label">WATER LEVEL (REAL-TIME)</div>
+        <div class="value-row">
+            <div id="level" class="value">0</div>
+            <div class="unit">mm</div>
         </div>
-
-        <div class="data-item">
-            <div class="label">TEMPERATURE</div>
-            <div class="value-row">
-                <div id="temp" class="value">00.0</div>
-                <div class="unit">°C</div>
-            </div>
-            <div id="time_temp" class="time">Update: ----/--/-- --:--:--</div>
-        </div>
-
-        <div class="data-item">
-            <div class="label">4G SIGNAL</div>
-            <div class="value-row">
-                <div id="signal" class="value">--</div>
-                <div class="unit">dBm</div>
-            </div>
-            <div id="time_sig" class="time">Update: ----/--/-- --:--:--</div>
-        </div>
-
-        <div class="data-item" style="border-bottom: none;">
-            <div class="label">SENSOR VOLTAGE</div>
-            <div class="value-row">
-                <div id="voltage" class="value">0.00</div>
-                <div class="unit">V</div>
-            </div>
-            <div id="time_vol" class="time">Update: ----/--/-- --:--:--</div>
+        <div class="sub-data">
+            <span id="time_level">更新時間: --:--:--</span>
+            <span id="vol_display">電壓: -- V</span>
         </div>
     </div>
 
+    <div class="chart-section">
+        <canvas id="waterChart"></canvas>
+    </div>
+
     <script>
-        const config = {
-            host: 'af11f11a.ala.asia-southeast1.emqxsl.com', 
-            port: 8084, 
-            user: 'test', 
-            pass: 'test1234' 
+        // --- 設定參數 ---
+        const MQTT_CONFIG = {
+            host: 'af11f11a.ala.asia-southeast1.emqxsl.com',
+            port: 8084,
+            user: 'test',
+            pass: 'test1234',
+            topic: '/outerAccess/subWaterLevelTopic'
         };
 
-        // 已取消 onclick 全屏切換功能
+        // --- 報警邏輯變量 ---
+        let lastLevelStatus = 0; // 0:正常, 1:70+, 2:120+, 3:300+
+        let levelCount = 0;
+        
+        let lastVolStatus = 0; // 0:正常, 1:低電量
+        let volCount = 0;
 
-        const client = mqtt.connect(`wss://${config.host}:${config.port}/mqtt`, {
-            clientId: 'Monitor_Final_V5_' + Math.random().toString(16).slice(2, 8),
-            username: config.user,
-            password: config.pass,
-            protocolVersion: 4
+        let offlineTimer = null;
+        const SIX_HOURS = 6 * 60 * 60 * 1000; // 兩次 3 小時 = 6 小時
+
+        // --- 初始化圖表 ---
+        const ctx = document.getElementById('waterChart').getContext('2d');
+        const waterChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    borderColor: '#00ff00',
+                    backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#444' }, grid: { display: false } },
+                    y: { beginAtZero: true, ticks: { color: '#444' }, grid: { color: '#222' } }
+                }
+            }
+        });
+
+        // --- MQTT 連線 ---
+        const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`, {
+            clientId: 'WEB_MONITOR_' + Math.random().toString(16).slice(2, 8),
+            username: MQTT_CONFIG.user,
+            password: MQTT_CONFIG.pass
         });
 
         client.on('connect', () => {
-            document.getElementById('status').innerText = "● 系統在線 | 正在監控數據";
+            document.getElementById('status').innerText = "● 系統在線 (加密連線中)";
             document.getElementById('status').className = "status-bar online";
-            client.subscribe("/outerAccess/subWaterLevelTopic");
+            client.subscribe(MQTT_CONFIG.topic);
+            resetOfflineTimer(); // 開始計時
         });
 
         client.on('message', (topic, message) => {
             try {
                 const data = JSON.parse(message.toString());
-                
-                const now = new Date();
-                const year = now.getFullYear();
-                const month = String(now.getMonth() + 1).padStart(2, '0');
-                const day = String(now.getDate()).padStart(2, '0');
-                const time = now.toLocaleTimeString('zh-HK', { hour12: false });
-                const fullUpdateStr = `Update: ${year}-${month}-${day} ${time}`;
+                resetOfflineTimer(); // 收到任何數據重設計時
 
-                if(data.waterLevel !== undefined) {
-                    const mmValue = Math.round(parseFloat(data.waterLevel) * 1000);
-                    document.getElementById('level').innerText = mmValue; 
+                // 1. 處理水位
+                if (data.waterLevel !== undefined) {
+                    const mm = Math.round(parseFloat(data.waterLevel) * 1000);
+                    updateDisplay(mm);
+                    checkLevelAlarm(mm);
                 }
-                
-                if(data.waterTemperature !== undefined) document.getElementById('temp').innerText = data.waterTemperature;
-                if(data.signalStrength !== undefined) document.getElementById('signal').innerText = data.signalStrength;
-                if(data.sensorVoltage !== undefined) document.getElementById('voltage').innerText = data.sensorVoltage;
 
-                document.getElementById('time_level').innerText = fullUpdateStr;
-                document.getElementById('time_temp').innerText = fullUpdateStr;
-                document.getElementById('time_sig').innerText = fullUpdateStr;
-                document.getElementById('time_vol').innerText = fullUpdateStr;
-
-                document.body.style.background = "#0a2a0a"; 
-                setTimeout(() => { document.body.style.background = "#000"; }, 100);
-
-                client.publish(`/outerAccess/pubWaterLevelTopic/${data.deviceCode}`, JSON.stringify({
-                    "msg": "接收消息成功",
-                    "collectionTime": data.collectionTime,
-                    "code": 200,
-                    "deviceCode": data.deviceCode
-                }));
-            } catch (e) { console.error(e); }
+                // 2. 處理電壓
+                if (data.sensorVoltage !== undefined) {
+                    const vol = parseFloat(data.sensorVoltage);
+                    document.getElementById('vol_display').innerText = `電壓: ${vol} V`;
+                    checkVoltageAlarm(vol);
+                }
+            } catch (e) { console.error("解析錯誤", e); }
         });
 
-        client.on('offline', () => { 
-            document.getElementById('status').innerText = "● 連線中斷";
-            document.getElementById('status').className = "status-bar offline"; 
-        });
+        // 更新顯示與圖表
+        function updateDisplay(mm) {
+            const timeStr = new Date().toLocaleTimeString('zh-HK', { hour12: false });
+            document.getElementById('level').innerText = mm;
+            document.getElementById('time_level').innerText = `更新時間: ${timeStr}`;
+
+            waterChart.data.labels.push(timeStr);
+            waterChart.data.datasets[0].data.push(mm);
+            if (waterChart.data.labels.length > 20) {
+                waterChart.data.labels.shift();
+                waterChart.data.datasets[0].data.shift();
+            }
+            waterChart.update();
+        }
+
+        // 報警判定：水位 (連續兩次)
+        function checkLevelAlarm(val) {
+            let currentStatus = 0;
+            if (val >= 300) currentStatus = 3;
+            else if (val >= 120) currentStatus = 2;
+            else if (val >= 70) currentStatus = 1;
+
+            if (currentStatus > 0 && currentStatus === lastLevelStatus) {
+                levelCount++;
+            } else {
+                levelCount = 0;
+            }
+            lastLevelStatus = currentStatus;
+
+            if (levelCount >= 1) { // 第二次達標
+                triggerAlarm(currentStatus);
+            } else {
+                clearAlarm();
+            }
+        }
+
+        // 報警判定：電壓 (連續兩次 < 3.4V)
+        function checkVoltageAlarm(vol) {
+            let currentVolStatus = (vol < 3.4) ? 1 : 0;
+            if (currentVolStatus === 1 && currentVolStatus === lastVolStatus) {
+                volCount++;
+            } else {
+                volCount = 0;
+            }
+            lastVolStatus = currentVolStatus;
+
+            if (volCount >= 1) {
+                document.getElementById('alarm-box').style.display = "block";
+                document.getElementById('alarm-box').innerText = `【警告】設備電量低 (${vol}V)`;
+                document.getElementById('alarm-box').style.background = "#555500";
+            }
+        }
+
+        // 執行背景變色與警告
+        function triggerAlarm(lv) {
+            const box = document.getElementById('alarm-box');
+            box.style.display = "block";
+            if (lv === 1) { box.innerText = "【警告】水位達 70mm (Lv.1)"; document.body.style.background = "#443300"; }
+            if (lv === 2) { box.innerText = "【嚴重】水位達 120mm (Lv.2)"; document.body.style.background = "#663300"; }
+            if (lv === 3) { box.innerText = "【危險】水位超過 300mm (Lv.3)"; document.body.style.background = "#660000"; sendWA("水位危急: " + lv); }
+        }
+
+        function clearAlarm() {
+            if (volCount < 1) { // 只有在沒低電量警告時才恢復黑底
+                document.getElementById('alarm-box').style.display = "none";
+                document.body.style.background = "#000";
+            }
+        }
+
+        // 離線計時邏輯
+        function resetOfflineTimer() {
+            if (offlineTimer) clearTimeout(offlineTimer);
+            offlineTimer = setTimeout(() => {
+                const msg = "【設備失聯】已連續 6 小時無上報";
+                document.getElementById('alarm-box').style.display = "block";
+                document.getElementById('alarm-box').innerText = msg;
+                document.getElementById('alarm-box').style.background = "#330000";
+                document.body.style.background = "#220000";
+                sendWA(msg);
+            }, SIX_HOURS);
+        }
+
+        function sendWA(text) {
+            console.log("嘗試發送 WhatsApp 通知: ", text);
+            // 這裡可以接入 CallMeBot API
+        }
     </script>
 </body>
 </html>
