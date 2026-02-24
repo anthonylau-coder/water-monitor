@@ -78,29 +78,44 @@ client.on('error', (err) => {
 });
 
         client.on('message', (topic, message) => {
-            const data = JSON.parse(message.toString());
-            const now = new Date().toLocaleTimeString(); // 獲取本地當前時間
+    // 1. 解析設備傳來的原始數據 
+    const data = JSON.parse(message.toString());
+    
+    // 2. 獲取本地更新時間，方便拍片記錄
+    const now = new Date().toLocaleTimeString('zh-HK', { hour12: false });
 
-            // 更新大字數據
-            document.getElementById('level').innerText = data.waterLevel;
-            document.getElementById('temp').innerText = data.waterTemperature;
-            document.getElementById('voltage').innerText = data.sensorVoltage;
+    // 3. 更新 UI 大字報 
+    document.getElementById('level').innerText = data.waterLevel;
+    document.getElementById('temp').innerText = data.waterTemperature;
+    document.getElementById('voltage').innerText = data.sensorVoltage;
+    
+    // 4. 更新數據旁的細字時間
+    document.getElementById('time_level').innerText = "最後更新: " + now;
+    document.getElementById('time_temp').innerText = "最後更新: " + now;
+    document.getElementById('time_vol').innerText = "最後更新: " + now;
 
-            // 更新數據旁的細字時間
-            document.getElementById('time_level').innerText = "Update: " + now;
-            document.getElementById('time_temp').innerText = "Update: " + now;
-            document.getElementById('time_vol').innerText = "Update: " + now;
+    // --- 強化：背景閃爍效果 (拍片專用) ---
+    // 每次收到數據，背景會微弱閃爍一次，證明數據是實時跳動的
+    document.body.style.transition = "background 0.1s";
+    document.body.style.background = "#051a05"; // 深綠色閃爍
+    setTimeout(() => { document.body.style.background = "#000"; }, 100);
 
-            // --- 自動回覆邏輯  ---
-            const responseTopic = "/outerAccess/pubWaterLevelTopic/" + data.deviceCode;
-            const responsePayload = {
-                "msg": "接收消息成功",
-                "collectionTime": data.collectionTime,
-                "code": 200,
-                "deviceCode": data.deviceCode
-            };
-            client.publish(responseTopic, JSON.stringify(responsePayload));
-        });
+    // --- 強化：自動回應邏輯 (嚴格對接協議) --- 
+    // 回應主題格式：/outerAccess/pubWaterLevelTopic/{deviceCode} 
+    const responseTopic = `/outerAccess/pubWaterLevelTopic/${data.deviceCode}`;
+    
+    const responsePayload = {
+        "msg": "接收消息成功",           // 必須為 UTF-8 
+        "collectionTime": data.collectionTime, // 必須與上報時間一致 
+        "code": 200,                    // 200 代表正常 
+        "deviceCode": data.deviceCode   // 冗餘信息 
+    };
+
+    // 發送回覆給設備 
+    client.publish(responseTopic, JSON.stringify(responsePayload));
+    
+    console.log(`[${now}] 數據更新：${data.deviceCode}，回覆已發送。`);
+});
 
         client.on('offline', () => {
             document.getElementById('status').innerText = "● 連線中斷";
