@@ -11,107 +11,113 @@
             background: #000; 
             color: #fff; 
             margin: 0; 
-            padding: 15px; 
+            padding: 10px; 
             transition: background 0.1s; 
-            overflow-y: auto; 
-            cursor: pointer; 
         }
 
-        .data-item { 
+        /* 回歸舊版狀態條：有背景色同文字 */
+        .status-bar { 
+            padding: 10px; 
+            font-size: 14px; 
+            text-align: center; 
             margin-bottom: 20px; 
-            border-bottom: 1px solid #1a1a1a; 
-            padding-bottom: 12px; 
+            border-radius: 4px; 
+            font-weight: bold;
+        }
+        .online { background: #004400; color: #00ff00; border: 1px solid #00ff00; }
+        .offline { background: #440000; color: #ff0000; border: 1px solid #ff0000; }
+
+        .data-item { 
+            position: relative; 
+            margin-bottom: 20px; 
+            border-bottom: 1px solid #222; 
+            padding-bottom: 15px; 
         }
 
         .label { 
             font-size: 14px; 
-            color: #666; 
+            color: #888; 
             font-weight: bold; 
-            text-transform: uppercase;
         }
 
         .value-row { 
             display: flex; 
             align-items: baseline; 
             gap: 8px; 
-            flex-wrap: nowrap; 
-            margin-top: 2px; 
+            margin-top: 5px; 
         }
 
-        /* 核心修改：寬度縮窄 (scaleX) + 高度壓扁 (scaleY) */
+        /* 數字繼續保持壓扁比例 (0.85 寬 / 0.75 高) */
         .value { 
-            font-size: 90px; 
+            font-size: 80px; 
             font-weight: bold; 
             color: #00ff00; 
-            line-height: 0.9; 
-            text-shadow: 0 0 15px rgba(0,255,0,0.3);
+            line-height: 1; 
+            text-shadow: 0 0 10px rgba(0,255,0,0.2);
             display: inline-block;
-            /* scaleX(0.85) 縮窄寬度, scaleY(0.75) 壓扁高度 */
             transform: scale(0.85, 0.75); 
-            transform-origin: bottom left; 
+            transform-origin: left bottom; 
             white-space: nowrap;
         }
 
         .unit { 
-            font-size: 24px; 
+            font-size: 20px; 
             color: #00ff00; 
             display: inline-block;
             transform: scaleY(0.8);
-            margin-left: -10px; /* 補償因 scaleX 縮窄後的空位 */
+            margin-left: -10px;
         }
 
+        /* Update 顯示在數據項右下角 */
         .time { 
-            font-size: 12px; 
+            display: block;
+            font-size: 11px; 
             color: #444; 
-            font-style: italic; 
-            margin-top: -18px; 
+            margin-top: -10px;
+            font-style: normal;
         }
-        
-        .status-bar { 
-            position: fixed; top: 0; left: 0; width: 100%; height: 4px; z-index: 9999; 
-        }
-        .online { background: #00ff00; box-shadow: 0 0 10px #00ff00; }
-        .offline { background: #ff0000; }
     </style>
 </head>
-<body onclick="toggleFullScreen()">
+<body>
 
-    <div id="status" class="status-bar offline"></div>
+    <div id="status" class="status-bar offline">等待連線...</div>
 
-    <div class="data-item">
-        <div class="label">WATER LEVEL</div>
-        <div class="value-row">
-            <div id="level" class="value">0</div>
-            <div class="unit">mm</div>
+    <div class="container">
+        <div class="data-item">
+            <div class="label">WATER LEVEL</div>
+            <div class="value-row">
+                <div id="level" class="value">0</div>
+                <div class="unit">mm</div>
+            </div>
+            <div id="time_level" class="time">Update: ----/--/-- --:--:--</div>
         </div>
-        <div id="time_level" class="time">Update: ----/--/-- --:--:--</div>
-    </div>
 
-    <div class="data-item">
-        <div class="label">TEMPERATURE</div>
-        <div class="value-row">
-            <div id="temp" class="value">00.0</div>
-            <div class="unit">°C</div>
+        <div class="data-item">
+            <div class="label">TEMPERATURE</div>
+            <div class="value-row">
+                <div id="temp" class="value">00.0</div>
+                <div class="unit">°C</div>
+            </div>
+            <div id="time_temp" class="time">Update: ----/--/-- --:--:--</div>
         </div>
-        <div id="time_temp" class="time">Update: ----/--/-- --:--:--</div>
-    </div>
 
-    <div class="data-item">
-        <div class="label">4G SIGNAL</div>
-        <div class="value-row">
-            <div id="signal" class="value">--</div>
-            <div class="unit">dBm</div>
+        <div class="data-item">
+            <div class="label">4G SIGNAL</div>
+            <div class="value-row">
+                <div id="signal" class="value">--</div>
+                <div class="unit">dBm</div>
+            </div>
+            <div id="time_sig" class="time">Update: ----/--/-- --:--:--</div>
         </div>
-        <div id="time_sig" class="time">Update: ----/--/-- --:--:--</div>
-    </div>
 
-    <div class="data-item" style="border-bottom: none;">
-        <div class="label">SENSOR VOLTAGE</div>
-        <div class="value-row">
-            <div id="voltage" class="value">0.00</div>
-            <div class="unit">V</div>
+        <div class="data-item" style="border-bottom: none;">
+            <div class="label">SENSOR VOLTAGE</div>
+            <div class="value-row">
+                <div id="voltage" class="value">0.00</div>
+                <div class="unit">V</div>
+            </div>
+            <div id="time_vol" class="time">Update: ----/--/-- --:--:--</div>
         </div>
-        <div id="time_vol" class="time">Update: ----/--/-- --:--:--</div>
     </div>
 
     <script>
@@ -122,22 +128,17 @@
             pass: 'test1234' 
         };
 
-        function toggleFullScreen() {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(e => console.log(e));
-            } else {
-                if (document.exitFullscreen) document.exitFullscreen();
-            }
-        }
+        // 已取消 onclick 全屏切換功能
 
         const client = mqtt.connect(`wss://${config.host}:${config.port}/mqtt`, {
-            clientId: 'Monitor_Final_' + Math.random().toString(16).slice(2, 8),
+            clientId: 'Monitor_Final_V5_' + Math.random().toString(16).slice(2, 8),
             username: config.user,
             password: config.pass,
             protocolVersion: 4
         });
 
         client.on('connect', () => {
+            document.getElementById('status').innerText = "● 系統在線 | 正在監控數據";
             document.getElementById('status').className = "status-bar online";
             client.subscribe("/outerAccess/subWaterLevelTopic");
         });
@@ -146,33 +147,30 @@
             try {
                 const data = JSON.parse(message.toString());
                 
-                // 獲取日期 + 時間
                 const now = new Date();
-                const dateStr = now.toLocaleDateString('zh-HK', { year:'numeric', month:'2-digit', day:'2-digit' }).replace(/\//g, '-');
-                const timeStr = now.toLocaleTimeString('zh-HK', { hour12: false });
-                const fullUpdateStr = `Update: ${dateStr} ${timeStr}`;
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const time = now.toLocaleTimeString('zh-HK', { hour12: false });
+                const fullUpdateStr = `Update: ${year}-${month}-${day} ${time}`;
 
-                // 更新數據
                 if(data.waterLevel !== undefined) {
-                    // 將 M 轉換為 mm (數值 * 1000)
-                    const mmValue = parseFloat(data.waterLevel) * 1000;
-                    document.getElementById('level').innerText = mmValue.toFixed(0); 
+                    const mmValue = Math.round(parseFloat(data.waterLevel) * 1000);
+                    document.getElementById('level').innerText = mmValue; 
                 }
+                
                 if(data.waterTemperature !== undefined) document.getElementById('temp').innerText = data.waterTemperature;
                 if(data.signalStrength !== undefined) document.getElementById('signal').innerText = data.signalStrength;
                 if(data.sensorVoltage !== undefined) document.getElementById('voltage').innerText = data.sensorVoltage;
 
-                // 更新包含日期的時間戳
                 document.getElementById('time_level').innerText = fullUpdateStr;
                 document.getElementById('time_temp').innerText = fullUpdateStr;
                 document.getElementById('time_sig').innerText = fullUpdateStr;
                 document.getElementById('time_vol').innerText = fullUpdateStr;
 
-                // 閃爍效果
                 document.body.style.background = "#0a2a0a"; 
                 setTimeout(() => { document.body.style.background = "#000"; }, 100);
 
-                // 回應
                 client.publish(`/outerAccess/pubWaterLevelTopic/${data.deviceCode}`, JSON.stringify({
                     "msg": "接收消息成功",
                     "collectionTime": data.collectionTime,
@@ -182,7 +180,10 @@
             } catch (e) { console.error(e); }
         });
 
-        client.on('offline', () => { document.getElementById('status').className = "status-bar offline"; });
+        client.on('offline', () => { 
+            document.getElementById('status').innerText = "● 連線中斷";
+            document.getElementById('status').className = "status-bar offline"; 
+        });
     </script>
 </body>
 </html>
