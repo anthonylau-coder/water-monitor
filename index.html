@@ -2,124 +2,139 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>水位機現場測試 - 大字版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>水位監控 - 專業 DEMO 版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
     <style>
-        body { font-family: 'Courier New', Courier, monospace; background: #000; color: #fff; margin: 0; padding: 40px; }
-        .data-item { margin-bottom: 60px; }
-        .label { font-size: 24px; color: #aaa; text-transform: uppercase; letter-spacing: 2px; }
-        .value-row { display: flex; align-items: baseline; gap: 20px; }
-        .value { font-size: 120px; font-weight: bold; color: #00ff00; } /* 螢光綠大字 */
-        .unit { font-size: 40px; color: #00ff00; }
-        .time { font-size: 18px; color: #666; font-style: italic; }
-        .status-bar { position: fixed; top: 0; left: 0; width: 100%; padding: 10px; font-size: 14px; text-align: center; }
-        .online { background: #004400; color: #00ff00; }
-        .offline { background: #440000; color: #ff0000; }
+        body { font-family: 'Courier New', Courier, monospace; background: #000; color: #fff; margin: 0; padding: 20px; transition: background 0.1s; overflow-x: hidden; }
+        .data-item { margin-bottom: 40px; border-bottom: 1px solid #222; padding-bottom: 20px; }
+        .label { font-size: 20px; color: #888; letter-spacing: 1px; }
+        .value-row { display: flex; align-items: baseline; gap: 15px; flex-wrap: wrap; }
+        .value { font-size: 110px; font-weight: bold; color: #00ff00; line-height: 1; }
+        .unit { font-size: 35px; color: #00ff00; margin-right: 10px; }
+        .time { font-size: 16px; color: #555; font-style: italic; }
+        
+        /* 頂部工具列 */
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .status-bar { padding: 5px 15px; font-size: 12px; border-radius: 20px; }
+        .online { background: #004400; color: #0ff; border: 1px solid #00ff00; }
+        .offline { background: #440000; color: #f00; border: 1px solid #ff0000; }
+        
+        /* 全屏按鈕 */
+        #fs-btn { background: #333; color: #fff; border: 1px solid #555; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; }
     </style>
 </head>
 <body>
 
-    <div id="status" class="status-bar offline">等待 MQTT 連線...</div>
+    <div class="toolbar">
+        <div id="status" class="status-bar offline">CONNECTING...</div>
+        <button id="fs-btn">進入全螢幕 (拍片用)</button>
+    </div>
 
     <div class="data-item">
-        <div class="label">Water Level (淹水深度)</div>
+        <div class="label">WATER LEVEL (水位深度)</div>
         <div class="value-row">
             <div id="level" class="value">0.000</div>
             <div class="unit">M</div>
-            <div id="time_level" class="time">--:--:--</div>
+            <div id="time_level" class="time">Update: --:--:--</div>
         </div>
     </div>
 
     <div class="data-item">
-        <div class="label">Temperature (水溫)</div>
+        <div class="label">TEMPERATURE (水溫)</div>
         <div class="value-row">
             <div id="temp" class="value">00.0</div>
             <div class="unit">°C</div>
-            <div id="time_temp" class="time">--:--:--</div>
+            <div id="time_temp" class="time">Update: --:--:--</div>
         </div>
     </div>
 
     <div class="data-item">
-        <div class="label">Sensor Voltage (電壓)</div>
+        <div class="label">4G SIGNAL (信號強度)</div>
+        <div class="value-row">
+            <div id="signal" class="value">--</div>
+            <div class="unit">dBm</div>
+            <div id="time_sig" class="time">Update: --:--:--</div>
+        </div>
+    </div>
+
+    <div class="data-item">
+        <div class="label">SENSOR VOLTAGE (電壓)</div>
         <div class="value-row">
             <div id="voltage" class="value">0.00</div>
             <div class="unit">V</div>
-            <div id="time_vol" class="time">--:--:--</div>
+            <div id="time_vol" class="time">Update: --:--:--</div>
         </div>
     </div>
 
     <script>
-        // --- 請填入你的 MQTT Broker 資料 ---
         const config = {
-    host: 'af11f11a.ala.asia-southeast1.emqxsl.com', 
-    port: 8084, 
-    user: 'test',     // 必須係全細寫 test
-    pass: 'test1234'  // 必須同你啱啱 Edit 嗰陣打嘅一模一樣
-};
+            host: 'af11f11a.ala.asia-southeast1.emqxsl.com', 
+            port: 8084, 
+            user: 'test', 
+            pass: 'test1234' 
+        };
+
+        // 全螢幕按鈕邏輯
+        const fsBtn = document.getElementById('fs-btn');
+        fsBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    alert(`全屏失敗: ${err.message}`);
+                });
+                fsBtn.innerText = "退出全屏";
+            } else {
+                document.exitFullscreen();
+                fsBtn.innerText = "進入全屏";
+            }
+        });
 
         const client = mqtt.connect(`wss://${config.host}:${config.port}/mqtt`, {
-    clientId: 'Web_Demo_' + Math.random().toString(16).slice(2, 8),
-    username: config.user,
-    password: config.pass,
-    protocolVersion: 4,
-    clean: true
-});
+            clientId: 'Monitor_Final_' + Math.random().toString(16).slice(2, 8),
+            username: config.user,
+            password: config.pass,
+            protocolVersion: 4
+        });
 
-client.on('connect', () => {
-    console.log("連線成功！");
-    document.getElementById('status').innerText = "● 系統在線 | 正在監控設備數據";
-    document.getElementById('status').className = "status-bar online";
-    client.subscribe("/outerAccess/subWaterLevelTopic");
-});
-
-client.on('error', (err) => {
-    console.log("連線出錯: ", err);
-});
+        client.on('connect', () => {
+            document.getElementById('status').innerText = "● LIVE - 正在監控數據";
+            document.getElementById('status').className = "status-bar online";
+            client.subscribe("/outerAccess/subWaterLevelTopic");
+        });
 
         client.on('message', (topic, message) => {
-    // 1. 解析設備傳來的原始數據 
-    const data = JSON.parse(message.toString());
-    
-    // 2. 獲取本地更新時間，方便拍片記錄
-    const now = new Date().toLocaleTimeString('zh-HK', { hour12: false });
+            try {
+                const data = JSON.parse(message.toString());
+                const now = new Date().toLocaleTimeString('zh-HK', { hour12: false });
 
-    // 3. 更新 UI 大字報 
-    document.getElementById('level').innerText = data.waterLevel;
-    document.getElementById('temp').innerText = data.waterTemperature;
-    document.getElementById('voltage').innerText = data.sensorVoltage;
-    
-    // 4. 更新數據旁的細字時間
-    document.getElementById('time_level').innerText = "最後更新: " + now;
-    document.getElementById('time_temp').innerText = "最後更新: " + now;
-    document.getElementById('time_vol').innerText = "最後更新: " + now;
+                // 更新數據
+                document.getElementById('level').innerText = data.waterLevel;
+                document.getElementById('temp').innerText = data.waterTemperature;
+                document.getElementById('signal').innerText = data.signalStrength;
+                document.getElementById('voltage').innerText = data.sensorVoltage;
 
-    // --- 強化：背景閃爍效果 (拍片專用) ---
-    // 每次收到數據，背景會微弱閃爍一次，證明數據是實時跳動的
-    document.body.style.transition = "background 0.1s";
-    document.body.style.background = "#051a05"; // 深綠色閃爍
-    setTimeout(() => { document.body.style.background = "#000"; }, 100);
+                // 更新時間戳
+                const timeStr = "Update: " + now;
+                document.getElementById('time_level').innerText = timeStr;
+                document.getElementById('time_temp').innerText = timeStr;
+                document.getElementById('time_sig').innerText = timeStr;
+                document.getElementById('time_vol').innerText = timeStr;
 
-    // --- 強化：自動回應邏輯 (嚴格對接協議) --- 
-    // 回應主題格式：/outerAccess/pubWaterLevelTopic/{deviceCode} 
-    const responseTopic = `/outerAccess/pubWaterLevelTopic/${data.deviceCode}`;
-    
-    const responsePayload = {
-        "msg": "接收消息成功",           // 必須為 UTF-8 
-        "collectionTime": data.collectionTime, // 必須與上報時間一致 
-        "code": 200,                    // 200 代表正常 
-        "deviceCode": data.deviceCode   // 冗餘信息 
-    };
+                // 背景跳動效果 (數據更新時閃爍)
+                document.body.style.background = "#051a05"; 
+                setTimeout(() => { document.body.style.background = "#000"; }, 100);
 
-    // 發送回覆給設備 
-    client.publish(responseTopic, JSON.stringify(responsePayload));
-    
-    console.log(`[${now}] 數據更新：${data.deviceCode}，回覆已發送。`);
-});
-
-        client.on('offline', () => {
-            document.getElementById('status').innerText = "● 連線中斷";
-            document.getElementById('status').className = "status-bar offline";
+                // 自動回應設備
+                const responseTopic = `/outerAccess/pubWaterLevelTopic/${data.deviceCode}`;
+                client.publish(responseTopic, JSON.stringify({
+                    "msg": "接收消息成功",
+                    "collectionTime": data.collectionTime,
+                    "code": 200,
+                    "deviceCode": data.deviceCode
+                }));
+            } catch (e) {
+                console.error("解析錯誤:", e);
+            }
         });
     </script>
 </body>
