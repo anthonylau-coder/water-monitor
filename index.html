@@ -2,34 +2,25 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>水位監控 - 專業 DEMO 版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水位監控 - 現場測試版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
     <style>
-        body { font-family: 'Courier New', Courier, monospace; background: #000; color: #fff; margin: 0; padding: 20px; transition: background 0.1s; overflow-x: hidden; }
+        body { font-family: 'Courier New', Courier, monospace; background: #000; color: #fff; margin: 0; padding: 20px; transition: background 0.1s; }
         .data-item { margin-bottom: 40px; border-bottom: 1px solid #222; padding-bottom: 20px; }
         .label { font-size: 20px; color: #888; letter-spacing: 1px; }
         .value-row { display: flex; align-items: baseline; gap: 15px; flex-wrap: wrap; }
-        .value { font-size: 110px; font-weight: bold; color: #00ff00; line-height: 1; }
-        .unit { font-size: 35px; color: #00ff00; margin-right: 10px; }
+        .value { font-size: 100px; font-weight: bold; color: #00ff00; line-height: 1; }
+        .unit { font-size: 30px; color: #00ff00; margin-right: 10px; }
         .time { font-size: 16px; color: #555; font-style: italic; }
-        
-        /* 頂部工具列 */
-        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .status-bar { padding: 5px 15px; font-size: 12px; border-radius: 20px; }
-        .online { background: #004400; color: #0ff; border: 1px solid #00ff00; }
-        .offline { background: #440000; color: #f00; border: 1px solid #ff0000; }
-        
-        /* 全屏按鈕 */
-        #fs-btn { background: #333; color: #fff; border: 1px solid #555; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .status-bar { position: sticky; top: 0; padding: 8px; font-size: 14px; text-align: center; margin-bottom: 20px; border-radius: 4px; }
+        .online { background: #004400; color: #00ff00; }
+        .offline { background: #440000; color: #ff0000; }
     </style>
 </head>
 <body>
 
-    <div class="toolbar">
-        <div id="status" class="status-bar offline">CONNECTING...</div>
-        <button id="fs-btn">進入全螢幕 (拍片用)</button>
-    </div>
+    <div id="status" class="status-bar offline">等待連線...</div>
 
     <div class="data-item">
         <div class="label">WATER LEVEL (水位深度)</div>
@@ -68,36 +59,23 @@
     </div>
 
     <script>
+        // --- 你的連線設定 (已根據你之前的圖片填好) ---
         const config = {
             host: 'af11f11a.ala.asia-southeast1.emqxsl.com', 
             port: 8084, 
             user: 'test', 
-            pass: 'test1234' 
+            pass: 'test1234' // <--- 確保呢個係你重設後嘅密碼
         };
 
-        // 全螢幕按鈕邏輯
-        const fsBtn = document.getElementById('fs-btn');
-        fsBtn.addEventListener('click', () => {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(err => {
-                    alert(`全屏失敗: ${err.message}`);
-                });
-                fsBtn.innerText = "退出全屏";
-            } else {
-                document.exitFullscreen();
-                fsBtn.innerText = "進入全屏";
-            }
-        });
-
         const client = mqtt.connect(`wss://${config.host}:${config.port}/mqtt`, {
-            clientId: 'Monitor_Final_' + Math.random().toString(16).slice(2, 8),
+            clientId: 'Monitor_' + Math.random().toString(16).slice(2, 8),
             username: config.user,
             password: config.pass,
             protocolVersion: 4
         });
 
         client.on('connect', () => {
-            document.getElementById('status').innerText = "● LIVE - 正在監控數據";
+            document.getElementById('status').innerText = "● 系統在線 | 正在監控設備數據";
             document.getElementById('status').className = "status-bar online";
             client.subscribe("/outerAccess/subWaterLevelTopic");
         });
@@ -120,21 +98,28 @@
                 document.getElementById('time_sig').innerText = timeStr;
                 document.getElementById('time_vol').innerText = timeStr;
 
-                // 背景跳動效果 (數據更新時閃爍)
-                document.body.style.background = "#051a05"; 
+                // --- 背景閃爍效果 (拍片反饋) ---
+                document.body.style.background = "#052005"; 
                 setTimeout(() => { document.body.style.background = "#000"; }, 100);
 
-                // 自動回應設備
+                // --- 自動回應設備 (嚴格遵守協議) ---
                 const responseTopic = `/outerAccess/pubWaterLevelTopic/${data.deviceCode}`;
-                client.publish(responseTopic, JSON.stringify({
+                const responsePayload = {
                     "msg": "接收消息成功",
                     "collectionTime": data.collectionTime,
                     "code": 200,
                     "deviceCode": data.deviceCode
-                }));
+                };
+                client.publish(responseTopic, JSON.stringify(responsePayload));
+                
             } catch (e) {
                 console.error("解析錯誤:", e);
             }
+        });
+
+        client.on('offline', () => {
+            document.getElementById('status').innerText = "● 連線中斷";
+            document.getElementById('status').className = "status-bar offline";
         });
     </script>
 </body>
