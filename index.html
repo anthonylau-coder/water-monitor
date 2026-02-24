@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>水位監控 - 專業 DEMO</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
     <style>
@@ -11,23 +11,21 @@
             background: #000; 
             color: #fff; 
             margin: 0; 
-            padding: 20px; 
+            padding: 15px; 
             transition: background 0.1s; 
-            overflow: hidden; 
+            overflow-y: auto; 
             cursor: pointer; 
         }
 
-        /* 調整間距，配合壓扁咗嘅文字 */
         .data-item { 
-            margin-bottom: 25px; 
+            margin-bottom: 20px; 
             border-bottom: 1px solid #1a1a1a; 
-            padding-bottom: 15px; 
+            padding-bottom: 12px; 
         }
 
         .label { 
-            font-size: 18px; 
+            font-size: 14px; 
             color: #666; 
-            letter-spacing: 1px; 
             font-weight: bold; 
             text-transform: uppercase;
         }
@@ -35,47 +33,42 @@
         .value-row { 
             display: flex; 
             align-items: baseline; 
-            gap: 15px; 
-            flex-wrap: wrap; 
-            margin-top: 5px; 
+            gap: 8px; 
+            flex-wrap: nowrap; 
+            margin-top: 2px; 
         }
 
-        /* 核心修改：高度壓扁 25% (scaleY 0.75) */
+        /* 核心修改：寬度縮窄 (scaleX) + 高度壓扁 (scaleY) */
         .value { 
-            font-size: 115px; 
+            font-size: 90px; 
             font-weight: bold; 
             color: #00ff00; 
-            line-height: 1; 
+            line-height: 0.9; 
             text-shadow: 0 0 15px rgba(0,255,0,0.3);
             display: inline-block;
-            transform: scaleY(0.75); 
-            transform-origin: bottom left; /* 確保對齊左下角 */
+            /* scaleX(0.85) 縮窄寬度, scaleY(0.75) 壓扁高度 */
+            transform: scale(0.85, 0.75); 
+            transform-origin: bottom left; 
+            white-space: nowrap;
         }
 
         .unit { 
-            font-size: 35px; 
+            font-size: 24px; 
             color: #00ff00; 
-            margin-right: 10px; 
             display: inline-block;
-            transform: scaleY(0.8); /* 單位都稍微壓扁少少，視覺更統一 */
+            transform: scaleY(0.8);
+            margin-left: -10px; /* 補償因 scaleX 縮窄後的空位 */
         }
 
         .time { 
-            font-size: 14px; 
+            font-size: 12px; 
             color: #444; 
             font-style: italic; 
-            margin-top: -5px; /* 因為字壓扁咗，將時間向上移返少少 */
+            margin-top: -18px; 
         }
         
-        /* 頂部隱藏式狀態線 */
         .status-bar { 
-            position: fixed; 
-            top: 0; 
-            left: 0; 
-            width: 100%; 
-            height: 4px; 
-            transition: background 0.3s; 
-            z-index: 9999; 
+            position: fixed; top: 0; left: 0; width: 100%; height: 4px; z-index: 9999; 
         }
         .online { background: #00ff00; box-shadow: 0 0 10px #00ff00; }
         .offline { background: #ff0000; }
@@ -86,26 +79,110 @@
     <div id="status" class="status-bar offline"></div>
 
     <div class="data-item">
-        <div class="label">WATER LEVEL (水位深度)</div>
+        <div class="label">WATER LEVEL</div>
         <div class="value-row">
-            <div id="level" class="value">0.000</div>
-            <div class="unit">M</div>
+            <div id="level" class="value">0</div>
+            <div class="unit">mm</div>
         </div>
-        <div id="time_level" class="time">Update: --:--:--</div>
+        <div id="time_level" class="time">Update: ----/--/-- --:--:--</div>
     </div>
 
     <div class="data-item">
-        <div class="label">TEMPERATURE (水溫)</div>
+        <div class="label">TEMPERATURE</div>
         <div class="value-row">
             <div id="temp" class="value">00.0</div>
             <div class="unit">°C</div>
         </div>
-        <div id="time_temp" class="time">Update: --:--:--</div>
+        <div id="time_temp" class="time">Update: ----/--/-- --:--:--</div>
     </div>
 
     <div class="data-item">
-        <div class="label">4G SIGNAL (信號強度)</div>
+        <div class="label">4G SIGNAL</div>
         <div class="value-row">
             <div id="signal" class="value">--</div>
             <div class="unit">dBm</div>
         </div>
+        <div id="time_sig" class="time">Update: ----/--/-- --:--:--</div>
+    </div>
+
+    <div class="data-item" style="border-bottom: none;">
+        <div class="label">SENSOR VOLTAGE</div>
+        <div class="value-row">
+            <div id="voltage" class="value">0.00</div>
+            <div class="unit">V</div>
+        </div>
+        <div id="time_vol" class="time">Update: ----/--/-- --:--:--</div>
+    </div>
+
+    <script>
+        const config = {
+            host: 'af11f11a.ala.asia-southeast1.emqxsl.com', 
+            port: 8084, 
+            user: 'test', 
+            pass: 'test1234' 
+        };
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(e => console.log(e));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        const client = mqtt.connect(`wss://${config.host}:${config.port}/mqtt`, {
+            clientId: 'Monitor_Final_' + Math.random().toString(16).slice(2, 8),
+            username: config.user,
+            password: config.pass,
+            protocolVersion: 4
+        });
+
+        client.on('connect', () => {
+            document.getElementById('status').className = "status-bar online";
+            client.subscribe("/outerAccess/subWaterLevelTopic");
+        });
+
+        client.on('message', (topic, message) => {
+            try {
+                const data = JSON.parse(message.toString());
+                
+                // 獲取日期 + 時間
+                const now = new Date();
+                const dateStr = now.toLocaleDateString('zh-HK', { year:'numeric', month:'2-digit', day:'2-digit' }).replace(/\//g, '-');
+                const timeStr = now.toLocaleTimeString('zh-HK', { hour12: false });
+                const fullUpdateStr = `Update: ${dateStr} ${timeStr}`;
+
+                // 更新數據
+                if(data.waterLevel !== undefined) {
+                    // 將 M 轉換為 mm (數值 * 1000)
+                    const mmValue = parseFloat(data.waterLevel) * 1000;
+                    document.getElementById('level').innerText = mmValue.toFixed(0); 
+                }
+                if(data.waterTemperature !== undefined) document.getElementById('temp').innerText = data.waterTemperature;
+                if(data.signalStrength !== undefined) document.getElementById('signal').innerText = data.signalStrength;
+                if(data.sensorVoltage !== undefined) document.getElementById('voltage').innerText = data.sensorVoltage;
+
+                // 更新包含日期的時間戳
+                document.getElementById('time_level').innerText = fullUpdateStr;
+                document.getElementById('time_temp').innerText = fullUpdateStr;
+                document.getElementById('time_sig').innerText = fullUpdateStr;
+                document.getElementById('time_vol').innerText = fullUpdateStr;
+
+                // 閃爍效果
+                document.body.style.background = "#0a2a0a"; 
+                setTimeout(() => { document.body.style.background = "#000"; }, 100);
+
+                // 回應
+                client.publish(`/outerAccess/pubWaterLevelTopic/${data.deviceCode}`, JSON.stringify({
+                    "msg": "接收消息成功",
+                    "collectionTime": data.collectionTime,
+                    "code": 200,
+                    "deviceCode": data.deviceCode
+                }));
+            } catch (e) { console.error(e); }
+        });
+
+        client.on('offline', () => { document.getElementById('status').className = "status-bar offline"; });
+    </script>
+</body>
+</html>
