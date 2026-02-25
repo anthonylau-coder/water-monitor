@@ -71,7 +71,7 @@
         const db = firebase.database();
 
         // MQTT 配置
-        const MQTT_CONFIG = { host: 'af11f11a.ala.asia-southeast1.emqxsl.com', port: 8084, user: 'test', pass: 'test1234', topic: '/outerAccess/subWaterLevelTopic' };
+        const MQTT_CONFIG = { host: 'mqtt.smart-waterpumpsystem.com', port: 8084, user: 'test', pass: 'test1234', topic: '/outerAccess/subWaterLevelTopic' };
         
         let waterConfirmCount = 0, volConfirmCount = 0, currentLevel = 0, currentVolAlarm = false;
 
