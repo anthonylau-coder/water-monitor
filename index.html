@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能水位監控系統 - V11 完整日期版</title>
+    <title>智能水位監控系統 - V12 記憶版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -69,10 +69,34 @@
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#444', font: {size: 10} } }, y: { beginAtZero: true, ticks: { color: '#444' }, grid: { color: '#222' } } } }
         });
 
-        const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`, { clientId: 'WEB_V11_' + Math.random().toString(16).slice(2, 8), username: MQTT_CONFIG.user, password: MQTT_CONFIG.pass });
+        // --- 新增：讀取快取邏輯 ---
+        function loadCache() {
+            const cache = localStorage.getItem('water_monitor_cache');
+            if (cache) {
+                const p = JSON.parse(cache);
+                document.getElementById('level').innerText = p.level;
+                document.getElementById('temp').innerText = p.temp;
+                document.getElementById('full_date').innerText = "最後紀錄: " + p.full_date;
+                document.getElementById('sig_display').innerText = p.sig;
+                document.getElementById('vol_display').innerText = p.vol;
+                
+                // 恢復圖表
+                waterChart.data.labels = p.chartLabels || [];
+                waterChart.data.datasets[0].data = p.chartData || [];
+                waterChart.update();
+                
+                // 恢復背景顏色判斷
+                updateWaterLogic(parseInt(p.level));
+                updateVolLogic(parseFloat(p.vol));
+                renderAlarmUI();
+            }
+        }
+        loadCache();
+
+        const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`, { clientId: 'WEB_V12_' + Math.random().toString(16).slice(2, 8), username: MQTT_CONFIG.user, password: MQTT_CONFIG.pass });
 
         client.on('connect', () => {
-            document.getElementById('status').innerText = "● 系統在線 (加密連線中)";
+            document.getElementById('status').innerText = "● 系統在線 (記憶模式啟動)";
             document.getElementById('status').className = "status-bar online";
             client.subscribe(MQTT_CONFIG.topic);
         });
@@ -84,7 +108,6 @@
                 const dateStr = now.toLocaleDateString('zh-HK');
                 const timeStr = now.toLocaleTimeString('zh-HK', { hour12: false });
 
-                // 1. 水位與圖表 (保留日期時間)
                 if (data.waterLevel !== undefined) {
                     const mm = Math.round(parseFloat(data.waterLevel) * 1000);
                     document.getElementById('level').innerText = mm;
@@ -99,7 +122,6 @@
 
                 if (data.waterTemperature !== undefined) document.getElementById('temp').innerText = parseFloat(data.waterTemperature).toFixed(1);
                 if (data.signalStrength !== undefined) document.getElementById('sig_display').innerText = data.signalStrength;
-                
                 if (data.sensorVoltage !== undefined) {
                     const vol = parseFloat(data.sensorVoltage);
                     document.getElementById('vol_display').innerText = vol.toFixed(2);
@@ -107,15 +129,27 @@
                 }
 
                 renderAlarmUI();
+                saveCache(); // 每次收到數就儲存
 
             } catch (e) { console.error(e); }
         });
 
+        function saveCache() {
+            const cacheData = {
+                level: document.getElementById('level').innerText,
+                temp: document.getElementById('temp').innerText,
+                full_date: document.getElementById('full_date').innerText.replace("更新時間: ", ""),
+                sig: document.getElementById('sig_display').innerText,
+                vol: document.getElementById('vol_display').innerText,
+                chartLabels: waterChart.data.labels,
+                chartData: waterChart.data.datasets[0].data
+            };
+            localStorage.setItem('water_monitor_cache', JSON.stringify(cacheData));
+        }
+
         function updateWaterLogic(val) {
             let lv = 0;
-            if (val >= 300) lv = 3;
-            else if (val >= 120) lv = 2;
-            else if (lv = (val >= 70 ? 1 : 0));
+            if (val >= 300) lv = 3; else if (val >= 120) lv = 2; else if (val >= 70) lv = 1;
             if (lv > 0) waterConfirmCount++; else waterConfirmCount = 0;
             currentLevel = (waterConfirmCount >= 2) ? lv : 0;
         }
@@ -136,11 +170,9 @@
             } else if (currentVolAlarm) {
                 box.style.display = "block";
                 box.innerText = "【注意】設備電池電量低 (" + document.getElementById('vol_display').innerText + "V)";
-                box.style.background = "#555500";
-                document.body.style.background = "#333300";
+                box.style.background = "#555500"; document.body.style.background = "#333300";
             } else {
-                box.style.display = "none";
-                document.body.style.background = "#000";
+                box.style.display = "none"; document.body.style.background = "#000";
             }
         }
     </script>
