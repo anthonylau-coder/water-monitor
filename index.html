@@ -109,7 +109,17 @@
         initFromFirebase();
 
         // MQTT 連線
-        const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`, { clientId: 'WEB_FB_' + Math.random().toString(16).slice(2, 8), username: MQTT_CONFIG.user, password: MQTT_CONFIG.pass });
+        const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`, {
+    // 每次生成隨機 ID，防止沈工喺電腦同手機同時打開網頁時「互相踢下線」
+    clientId: 'WEB_USER_' + Math.random().toString(16).slice(2, 8), 
+    username: MQTT_CONFIG.user,
+    password: MQTT_CONFIG.pass,
+    
+    keepalive: 60,         // 心跳由 30s 加長到 60s，增加對弱網環境嘅容忍度
+    reconnectPeriod: 2000, // 如果斷咗，每 2 秒自動試一次重連
+    connectTimeout: 30000, // 30 秒連唔到先當逾時
+    clean: true            // 每次連線都係乾淨新開始
+});
 
         client.on('connect', () => {
             document.getElementById('status').innerText = "● 雲端連線成功 (Firebase Sync)";
