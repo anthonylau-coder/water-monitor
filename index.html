@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能水位監控 - V14 狀態同步增強版</title>
+    <title>智能水位監控 - V14.1 連線修復版</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -68,7 +68,6 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // MQTT 配置：地址已更新為新 Server，port 8084
         const MQTT_CONFIG = { 
             host: 'mqtt.smart-waterpumpsystem.com', 
             port: 8084, 
@@ -86,13 +85,11 @@
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#444', font: {size: 9} } }, y: { beginAtZero: true, ticks: { color: '#444' } } } }
         });
 
-        // 修改：初始化時強制觸發警報邏輯檢查
         function initFromFirebase() {
             db.ref('latest_status').once('value', (snapshot) => {
                 const val = snapshot.val();
                 if (val) {
-                    // 初始化時 waterConfirmCount 設為 2，確保立即觸發警報顏色
-                    waterConfirmCount = 2; 
+                    waterConfirmCount = 2; // 強制觸發警報顏色
                     volConfirmCount = 2;
                     updateUI(val.level, val.temp, val.sig, val.vol, val.time, false);
                 }
@@ -112,7 +109,7 @@
         }
         initFromFirebase();
 
-        // 移除 /mqtt 尾綴，增加相容性
+        // 核心修改：移除 /mqtt 後綴，直接連接域名
         const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}`, {
             clientId: 'WEB_V14_' + Math.random().toString(16).slice(2, 8), 
             username: MQTT_CONFIG.user,
@@ -124,9 +121,20 @@
         });
 
         client.on('connect', () => {
-            document.getElementById('status').innerText = "● 雲端連線成功 (Firebase Sync)";
+            console.log("MQTT Connected");
+            document.getElementById('status').innerText = "● 雲端連線成功 (實時模式)";
             document.getElementById('status').className = "status-bar online";
             client.subscribe(MQTT_CONFIG.topic);
+        });
+
+        client.on('offline', () => {
+            document.getElementById('status').innerText = "● 雲端離線 (嘗試重連中)";
+            document.getElementById('status').className = "status-bar offline";
+        });
+
+        client.on('error', (err) => {
+            console.error("MQTT Error:", err);
+            document.getElementById('status').innerText = "● 連線錯誤: " + err.message;
         });
 
         client.on('message', (topic, message) => {
@@ -151,7 +159,6 @@
             document.getElementById('vol_display').innerText = vol;
             document.getElementById('full_date').innerText = "更新時間: " + time;
 
-            // 觸發邏輯運算
             updateWaterLogic(level);
             updateVolLogic(parseFloat(vol));
             renderAlarmUI();
@@ -172,7 +179,6 @@
         function updateWaterLogic(val) {
             let lv = (val >= 300) ? 3 : (val >= 120 ? 2 : (val >= 70 ? 1 : 0));
             if (lv > 0) waterConfirmCount++; else waterConfirmCount = 0;
-            // 只要確認次數大於等於 2，就啟動對應等級警報
             currentLevel = (waterConfirmCount >= 2) ? lv : 0;
         }
 
