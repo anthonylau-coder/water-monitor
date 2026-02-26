@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能水位監控 - V13 Firebase 實作版</title>
+    <title>智能水位監控 - V14 狀態同步增強版</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -11,7 +11,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
 
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #000; color: #fff; margin: 0; padding: 15px; transition: background 0.8s; }
+        body { font-family: 'Segoe UI', sans-serif; background: #000; color: #fff; margin: 0; padding: 15px; transition: background 0.5s; }
         .status-bar { padding: 10px; font-size: 14px; text-align: center; margin-bottom: 15px; border-radius: 8px; font-weight: bold; border: 1px solid transparent; }
         .online { background: rgba(0, 68, 0, 0.8); color: #00ff00; border-color: #00ff00; }
         .offline { background: rgba(68, 0, 0, 0.8); color: #ff0000; border-color: #ff0000; }
@@ -29,7 +29,7 @@
 </head>
 <body>
 
-    <div id="status" class="status-bar offline">雲端初始化中...</div>
+    <div id="status" class="status-bar offline">雲端連線中...</div>
     <div id="alarm-box"></div>
 
     <div class="main-display">
@@ -46,7 +46,7 @@
         </div>
 
         <div class="sub-data">
-            <div id="full_date" style="width: 100%; color: #aaa; margin-bottom: 5px;">更新時間: 讀取雲端中...</div>
+            <div id="full_date" style="width: 100%; color: #aaa; margin-bottom: 5px;">更新時間: 讀取中...</div>
             <span>訊號: <span id="sig_display">--</span> dBm</span>
             <span>電壓: <span id="vol_display" style="font-weight:bold;">--</span> V</span>
         </div>
@@ -55,7 +55,6 @@
     <div class="chart-section"><canvas id="waterChart"></canvas></div>
 
     <script>
-        // 使用你提供的專屬配置
         const firebaseConfig = {
             apiKey: "AIzaSyBAzQFLLDACisyZN6CEIFunkA2by0LzocE",
             authDomain: "water-monitor-system-cbccd.firebaseapp.com",
@@ -66,16 +65,20 @@
             appId: "1:924884619328:web:0e187dd574cd54ee4e8fa5"
         };
 
-        // 初始化 Firebase
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // MQTT 配置
-        const MQTT_CONFIG = { host: 'mqtt.smart-waterpumpsystem.com', port: 8084, user: 'test', pass: 'test1234', topic: '/outerAccess/subWaterLevelTopic' };
+        // MQTT 配置：地址已更新為新 Server，port 8084
+        const MQTT_CONFIG = { 
+            host: 'mqtt.smart-waterpumpsystem.com', 
+            port: 8084, 
+            user: 'test', 
+            pass: 'test1234', 
+            topic: '/outerAccess/subWaterLevelTopic' 
+        };
         
         let waterConfirmCount = 0, volConfirmCount = 0, currentLevel = 0, currentVolAlarm = false;
 
-        // 初始化圖表
         const ctx = document.getElementById('waterChart').getContext('2d');
         const waterChart = new Chart(ctx, {
             type: 'line',
@@ -83,17 +86,18 @@
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#444', font: {size: 9} } }, y: { beginAtZero: true, ticks: { color: '#444' } } } }
         });
 
-        // 從 Firebase 加載數據
+        // 修改：初始化時強制觸發警報邏輯檢查
         function initFromFirebase() {
-            // 讀取最後一筆狀態
             db.ref('latest_status').once('value', (snapshot) => {
                 const val = snapshot.val();
                 if (val) {
+                    // 初始化時 waterConfirmCount 設為 2，確保立即觸發警報顏色
+                    waterConfirmCount = 2; 
+                    volConfirmCount = 2;
                     updateUI(val.level, val.temp, val.sig, val.vol, val.time, false);
                 }
             });
             
-            // 讀取最近歷史記錄填入圖表
             db.ref('history').limitToLast(30).once('value', (snapshot) => {
                 waterChart.data.labels = [];
                 waterChart.data.datasets[0].data = [];
@@ -108,18 +112,16 @@
         }
         initFromFirebase();
 
-        // MQTT 連線
-        const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`, {
-    // 每次生成隨機 ID，防止沈工喺電腦同手機同時打開網頁時「互相踢下線」
-    clientId: 'WEB_USER_' + Math.random().toString(16).slice(2, 8), 
-    username: MQTT_CONFIG.user,
-    password: MQTT_CONFIG.pass,
-    
-    keepalive: 60,         // 心跳由 30s 加長到 60s，增加對弱網環境嘅容忍度
-    reconnectPeriod: 2000, // 如果斷咗，每 2 秒自動試一次重連
-    connectTimeout: 30000, // 30 秒連唔到先當逾時
-    clean: true            // 每次連線都係乾淨新開始
-});
+        // 移除 /mqtt 尾綴，增加相容性
+        const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}`, {
+            clientId: 'WEB_V14_' + Math.random().toString(16).slice(2, 8), 
+            username: MQTT_CONFIG.user,
+            password: MQTT_CONFIG.pass,
+            keepalive: 60,
+            reconnectPeriod: 2000,
+            connectTimeout: 30000,
+            clean: true
+        });
 
         client.on('connect', () => {
             document.getElementById('status').innerText = "● 雲端連線成功 (Firebase Sync)";
@@ -139,8 +141,7 @@
                 const sig = data.signalStrength || "--";
 
                 updateUI(mm, temp, sig, vol, timeStr, true);
-
-            } catch (e) { console.error(e); }
+            } catch (e) { console.error("解析失敗:", e); }
         });
 
         function updateUI(level, temp, sig, vol, time, shouldSave) {
@@ -150,27 +151,28 @@
             document.getElementById('vol_display').innerText = vol;
             document.getElementById('full_date').innerText = "更新時間: " + time;
 
+            // 觸發邏輯運算
+            updateWaterLogic(level);
+            updateVolLogic(parseFloat(vol));
+            renderAlarmUI();
+
             if (shouldSave) {
                 const shortTime = time.includes(' ') ? time.split(' ')[1] : time;
                 waterChart.data.labels.push(shortTime);
                 waterChart.data.datasets[0].data.push(level);
-                if (waterChart.data.labels.length > 100) { waterChart.data.labels.shift(); waterChart.data.datasets[0].data.shift(); }
+                if (waterChart.data.labels.length > 50) { waterChart.data.labels.shift(); waterChart.data.datasets[0].data.shift(); }
                 waterChart.update();
 
-                // 同步至 Firebase
                 const entry = { level, temp, sig, vol, time };
                 db.ref('latest_status').set(entry);
                 db.ref('history').push(entry);
             }
-
-            updateWaterLogic(level);
-            updateVolLogic(parseFloat(vol));
-            renderAlarmUI();
         }
 
         function updateWaterLogic(val) {
             let lv = (val >= 300) ? 3 : (val >= 120 ? 2 : (val >= 70 ? 1 : 0));
             if (lv > 0) waterConfirmCount++; else waterConfirmCount = 0;
+            // 只要確認次數大於等於 2，就啟動對應等級警報
             currentLevel = (waterConfirmCount >= 2) ? lv : 0;
         }
 
@@ -184,14 +186,18 @@
             const box = document.getElementById('alarm-box');
             if (currentLevel > 0) {
                 box.style.display = "block";
-                const colors = ["", "#443300", "#663300", "#660000"];
-                box.innerText = "【警告】水位異常 Lv." + currentLevel;
+                const colors = ["", "#443300", "#663300", "#880000"];
+                const texts = ["", "低水位警告", "中水位警告", "高水位緊急警告"];
+                box.innerText = "【" + texts[currentLevel] + "】 Lv." + currentLevel;
                 document.body.style.background = colors[currentLevel];
             } else if (currentVolAlarm) {
-                box.style.display = "block"; box.innerText = "【注意】設備電池電量低";
-                box.style.background = "#555500"; document.body.style.background = "#333300";
+                box.style.display = "block"; 
+                box.innerText = "【注意】設備電池電量低";
+                box.style.background = "#555500"; 
+                document.body.style.background = "#333300";
             } else {
-                box.style.display = "none"; document.body.style.background = "#000";
+                box.style.display = "none"; 
+                document.body.style.background = "#000";
             }
         }
     </script>
