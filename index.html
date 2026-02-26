@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能水位監控 - V14.1 連線修復版</title>
+    <title>智能水位監控 - V14.2 同步增強版</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -29,7 +29,7 @@
 </head>
 <body>
 
-    <div id="status" class="status-bar offline">雲端連線中...</div>
+    <div id="status" class="status-bar offline">雲端初始化中...</div>
     <div id="alarm-box"></div>
 
     <div class="main-display">
@@ -85,11 +85,13 @@
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#444', font: {size: 9} } }, y: { beginAtZero: true, ticks: { color: '#444' } } } }
         });
 
+        // 修改：Firebase 讀取後立即觸發一次完整的警報渲染
         function initFromFirebase() {
             db.ref('latest_status').once('value', (snapshot) => {
                 const val = snapshot.val();
                 if (val) {
-                    waterConfirmCount = 2; // 強制觸發警報顏色
+                    // 初始化時將確認計數設為 2，確保立即觸發顏色顯示
+                    waterConfirmCount = 2; 
                     volConfirmCount = 2;
                     updateUI(val.level, val.temp, val.sig, val.vol, val.time, false);
                 }
@@ -109,7 +111,7 @@
         }
         initFromFirebase();
 
-        // 核心修改：移除 /mqtt 後綴，直接連接域名
+        // 核心修改：移除 /mqtt，適應新 Server
         const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}`, {
             clientId: 'WEB_V14_' + Math.random().toString(16).slice(2, 8), 
             username: MQTT_CONFIG.user,
@@ -121,7 +123,6 @@
         });
 
         client.on('connect', () => {
-            console.log("MQTT Connected");
             document.getElementById('status').innerText = "● 雲端連線成功 (實時模式)";
             document.getElementById('status').className = "status-bar online";
             client.subscribe(MQTT_CONFIG.topic);
@@ -130,11 +131,6 @@
         client.on('offline', () => {
             document.getElementById('status').innerText = "● 雲端離線 (嘗試重連中)";
             document.getElementById('status').className = "status-bar offline";
-        });
-
-        client.on('error', (err) => {
-            console.error("MQTT Error:", err);
-            document.getElementById('status').innerText = "● 連線錯誤: " + err.message;
         });
 
         client.on('message', (topic, message) => {
@@ -159,6 +155,7 @@
             document.getElementById('vol_display').innerText = vol;
             document.getElementById('full_date').innerText = "更新時間: " + time;
 
+            // 運算邏輯
             updateWaterLogic(level);
             updateVolLogic(parseFloat(vol));
             renderAlarmUI();
