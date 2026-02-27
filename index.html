@@ -55,7 +55,6 @@
     <div class="chart-section"><canvas id="waterChart"></canvas></div>
 
     <script>
-        // 使用你提供的專屬配置
         const firebaseConfig = {
             apiKey: "AIzaSyBAzQFLLDACisyZN6CEIFunkA2by0LzocE",
             authDomain: "water-monitor-system-cbccd.firebaseapp.com",
@@ -66,16 +65,14 @@
             appId: "1:924884619328:web:0e187dd574cd54ee4e8fa5"
         };
 
-        // 初始化 Firebase
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // MQTT 配置
+        // 確保使用正確的最新伺服器
         const MQTT_CONFIG = { host: 'mqtt.smart-waterpumpsystem.com', port: 8084, user: 'test', pass: 'test1234', topic: '/outerAccess/subWaterLevelTopic' };
         
-        let waterConfirmCount = 0, volConfirmCount = 0, currentLevel = 0, currentVolAlarm = false;
+        let currentLevel = 0, currentVolAlarm = false;
 
-        // 初始化圖表
         const ctx = document.getElementById('waterChart').getContext('2d');
         const waterChart = new Chart(ctx, {
             type: 'line',
@@ -83,46 +80,43 @@
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#444', font: {size: 9} } }, y: { beginAtZero: true, ticks: { color: '#444' } } } }
         });
 
-        // 從 Firebase 加載數據
+        // 修改重點：初始化時立即判定警報狀態
         function initFromFirebase() {
-            // 讀取最後一筆狀態
             db.ref('latest_status').once('value', (snapshot) => {
                 const val = snapshot.val();
                 if (val) {
-                    updateUI(val.level, val.temp, val.sig, val.vol, val.time, false);
+                    // level 改為支援 snapshot.level 或 snapshot.waterLevel
+                    const levelVal = val.level !== undefined ? val.level : (Math.round(parseFloat(val.waterLevel || 0) * 1000));
+                    updateUI(levelVal, val.temp || val.waterTemperature, val.sig || val.signalStrength, val.vol || val.sensorVoltage, val.time, false);
+                    
+                    // 第一次開啟即刻執行邏輯判斷，無需等待第二次更新
+                    updateWaterLogic(levelVal, true); 
+                    updateVolLogic(parseFloat(val.vol || val.sensorVoltage), true);
+                    renderAlarmUI();
                 }
             });
             
-            // 讀取最近歷史記錄填入圖表
             db.ref('history').limitToLast(30).once('value', (snapshot) => {
-                waterChart.data.labels = [];
-                waterChart.data.datasets[0].data = [];
+                waterChart.data.labels = []; waterChart.data.datasets[0].data = [];
                 snapshot.forEach((child) => {
                     const d = child.val();
                     const shortTime = d.time.includes(' ') ? d.time.split(' ')[1] : d.time;
                     waterChart.data.labels.push(shortTime);
-                    waterChart.data.datasets[0].data.push(d.level);
+                    waterChart.data.datasets[0].data.push(d.level || Math.round(parseFloat(d.waterLevel || 0) * 1000));
                 });
                 waterChart.update();
             });
         }
         initFromFirebase();
 
-        // MQTT 連線
         const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`, {
-    // 每次生成隨機 ID，防止沈工喺電腦同手機同時打開網頁時「互相踢下線」
-    clientId: 'WEB_USER_' + Math.random().toString(16).slice(2, 8), 
-    username: MQTT_CONFIG.user,
-    password: MQTT_CONFIG.pass,
-    
-    keepalive: 60,         // 心跳由 30s 加長到 60s，增加對弱網環境嘅容忍度
-    reconnectPeriod: 2000, // 如果斷咗，每 2 秒自動試一次重連
-    connectTimeout: 30000, // 30 秒連唔到先當逾時
-    clean: true            // 每次連線都係乾淨新開始
-});
+            clientId: 'WEB_FINAL_' + Math.random().toString(16).slice(2, 8), 
+            username: MQTT_CONFIG.user, password: MQTT_CONFIG.pass,
+            rejectUnauthorized: false
+        });
 
         client.on('connect', () => {
-            document.getElementById('status').innerText = "● 雲端連線成功 (Firebase Sync)";
+            document.getElementById('status').innerText = "● 雙軌連線成功 (MQTT 已激活)";
             document.getElementById('status').className = "status-bar online";
             client.subscribe(MQTT_CONFIG.topic);
         });
@@ -133,13 +127,17 @@
                 const now = new Date();
                 const timeStr = now.toLocaleDateString('zh-HK') + " " + now.toLocaleTimeString('zh-HK', { hour12: false });
                 
-                const mm = Math.round(parseFloat(data.waterLevel) * 1000);
+                // 單位自動換算：0.021m -> 21mm
+                const rawLv = parseFloat(data.waterLevel || 0);
+                const mm = rawLv < 5 ? Math.round(rawLv * 1000) : Math.round(rawLv);
                 const temp = parseFloat(data.waterTemperature || 0).toFixed(1);
                 const vol = parseFloat(data.sensorVoltage || 0).toFixed(2);
                 const sig = data.signalStrength || "--";
 
                 updateUI(mm, temp, sig, vol, timeStr, true);
-
+                updateWaterLogic(mm, false);
+                updateVolLogic(parseFloat(vol), false);
+                renderAlarmUI();
             } catch (e) { console.error(e); }
         });
 
@@ -154,38 +152,29 @@
                 const shortTime = time.includes(' ') ? time.split(' ')[1] : time;
                 waterChart.data.labels.push(shortTime);
                 waterChart.data.datasets[0].data.push(level);
-                if (waterChart.data.labels.length > 100) { waterChart.data.labels.shift(); waterChart.data.datasets[0].data.shift(); }
-                waterChart.update();
+                if (waterChart.data.labels.length > 50) { waterChart.data.labels.shift(); waterChart.data.datasets[0].data.shift(); }
+                waterChart.update('none');
 
-                // 同步至 Firebase
-                const entry = { level, temp, sig, vol, time };
-                db.ref('latest_status').set(entry);
-                db.ref('history').push(entry);
+                db.ref('latest_status').set({ level, temp, sig, vol, time });
             }
-
-            updateWaterLogic(level);
-            updateVolLogic(parseFloat(vol));
-            renderAlarmUI();
         }
 
-        function updateWaterLogic(val) {
+        // 修改重點：增加 isFirst 參數，讓第一次載入時跳過「確認兩次」的限制，直接顯示警報
+        function updateWaterLogic(val, isFirst) {
             let lv = (val >= 300) ? 3 : (val >= 120 ? 2 : (val >= 70 ? 1 : 0));
-            if (lv > 0) waterConfirmCount++; else waterConfirmCount = 0;
-            currentLevel = (waterConfirmCount >= 2) ? lv : 0;
+            currentLevel = lv; // 第一次開網頁，直接反映目前水位等級
         }
 
-        function updateVolLogic(vol) {
-            if (vol > 0 && vol < 3.4) volConfirmCount++; else volConfirmCount = 0;
-            currentVolAlarm = (volConfirmCount >= 2);
-            document.getElementById('vol_display').style.color = currentVolAlarm ? "#ff0" : "#666";
+        function updateVolLogic(vol, isFirst) {
+            currentVolAlarm = (vol > 0 && vol < 3.4);
         }
 
         function renderAlarmUI() {
             const box = document.getElementById('alarm-box');
             if (currentLevel > 0) {
                 box.style.display = "block";
-                const colors = ["", "#443300", "#663300", "#660000"];
-                box.innerText = "【警告】水位異常 Lv." + currentLevel;
+                const colors = ["", "#443300", "#d35400", "#660000"]; // Lv2 使用橙色背景
+                box.innerText = "【注意】中水位警告 Lv." + currentLevel;
                 document.body.style.background = colors[currentLevel];
             } else if (currentVolAlarm) {
                 box.style.display = "block"; box.innerText = "【注意】設備電池電量低";
