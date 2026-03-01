@@ -25,6 +25,7 @@
         #alarm-box { display: none; padding: 15px; margin: 10px 0; border-radius: 8px; text-align: center; font-size: 18px; font-weight: bold; animation: blink 1.5s infinite; }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
         .chart-section { background: #111; padding: 10px; border-radius: 10px; height: 230px; }
+        #debug-info { background: #222; padding: 8px; border-radius: 5px; font-size: 11px; color: #aaa; margin-top: 10px; max-height: 80px; overflow-y: auto; display: none; }
     </style>
 </head>
 <body>
@@ -54,6 +55,9 @@
 
     <div class="chart-section"><canvas id="waterChart"></canvas></div>
 
+    <!-- 調試信息區（可選） -->
+    <div id="debug-info"></div>
+
     <script>
         const firebaseConfig = {
             apiKey: "AIzaSyBAzQFLLDACisyZN6CEIFunkA2by0LzocE",
@@ -68,10 +72,18 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // 確保使用正確的最新伺服器
-        const MQTT_CONFIG = { host: 'mqtt.smart-waterpumpsystem.com', port: 8084, user: 'test', pass: 'test1234', topic: '/outerAccess/subWaterLevelTopic' };
+        // 更新後的 MQTT 配置 - 修改了訂閱主題
+        const MQTT_CONFIG = { 
+            host: 'mqtt.smart-waterpumpsystem.com', 
+            port: 8084, 
+            user: 'test', 
+            pass: 'test1234', 
+            subscribeTopic: '/waterlevel/866207074802772/status',  // 新訂閱主題
+            publishTopic: '/waterlevel/866207074802772/response'   // 發佈響應的主題
+        };
         
         let currentLevel = 0, currentVolAlarm = false;
+        const debugInfo = document.getElementById('debug-info');
 
         const ctx = document.getElementById('waterChart').getContext('2d');
         const waterChart = new Chart(ctx, {
@@ -80,16 +92,14 @@
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#444', font: {size: 9} } }, y: { beginAtZero: true, ticks: { color: '#444' } } } }
         });
 
-        // 修改重點：初始化時立即判定警報狀態
+        // 初始化從 Firebase 加載數據
         function initFromFirebase() {
             db.ref('latest_status').once('value', (snapshot) => {
                 const val = snapshot.val();
                 if (val) {
-                    // level 改為支援 snapshot.level 或 snapshot.waterLevel
                     const levelVal = val.level !== undefined ? val.level : (Math.round(parseFloat(val.waterLevel || 0) * 1000));
                     updateUI(levelVal, val.temp || val.waterTemperature, val.sig || val.signalStrength, val.vol || val.sensorVoltage, val.time, false);
                     
-                    // 第一次開啟即刻執行邏輯判斷，無需等待第二次更新
                     updateWaterLogic(levelVal, true); 
                     updateVolLogic(parseFloat(val.vol || val.sensorVoltage), true);
                     renderAlarmUI();
@@ -109,6 +119,7 @@
         }
         initFromFirebase();
 
+        // 連接到 MQTT Broker
         const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`, {
             clientId: 'WEB_FINAL_' + Math.random().toString(16).slice(2, 8), 
             username: MQTT_CONFIG.user, password: MQTT_CONFIG.pass,
@@ -118,12 +129,30 @@
         client.on('connect', () => {
             document.getElementById('status').innerText = "● 雙軌連線成功 (MQTT 已激活)";
             document.getElementById('status').className = "status-bar online";
-            client.subscribe(MQTT_CONFIG.topic);
+            
+            // 訂閱新的主題
+            client.subscribe(MQTT_CONFIG.subscribeTopic, (err) => {
+                if (!err) {
+                    console.log(`已訂閱主題: ${MQTT_CONFIG.subscribeTopic}`);
+                    if (debugInfo) debugInfo.innerHTML += `訂閱成功: ${MQTT_CONFIG.subscribeTopic}<br>`;
+                } else {
+                    console.error('訂閱失敗:', err);
+                    if (debugInfo) debugInfo.innerHTML += `訂閱失敗: ${err}<br>`;
+                }
+            });
         });
 
         client.on('message', (topic, message) => {
             try {
                 const data = JSON.parse(message.toString());
+                console.log('收到 MQTT 消息:', data);
+                
+                // 顯示調試信息
+                if (debugInfo) {
+                    debugInfo.innerHTML = `收到消息: ${new Date().toLocaleTimeString()}<br>`;
+                    debugInfo.style.display = 'block';
+                }
+                
                 const now = new Date();
                 const timeStr = now.toLocaleDateString('zh-HK') + " " + now.toLocaleTimeString('zh-HK', { hour12: false });
                 
@@ -134,12 +163,64 @@
                 const vol = parseFloat(data.sensorVoltage || 0).toFixed(2);
                 const sig = data.signalStrength || "--";
 
+                // 更新 UI
                 updateUI(mm, temp, sig, vol, timeStr, true);
                 updateWaterLogic(mm, false);
                 updateVolLogic(parseFloat(vol), false);
                 renderAlarmUI();
-            } catch (e) { console.error(e); }
+
+                // === 新增功能：收到消息後立即返回響應 ===
+                sendResponseMessage(data);
+                
+            } catch (e) { 
+                console.error('處理 MQTT 消息時出錯:', e);
+                if (debugInfo) debugInfo.innerHTML += `錯誤: ${e}<br>`;
+            }
         });
+
+        /**
+         * 發送響應消息
+         * @param {Object} receivedData - 接收到的原始數據
+         */
+        function sendResponseMessage(receivedData) {
+            try {
+                // 構建響應消息
+                const responseMsg = {
+                    "msg": "Message Received",
+                    "collectionTime": receivedData.collectionTime || getCurrentDateTime(),
+                    "code": 200,
+                    "deviceCode": receivedData.deviceCode || "2025122201"
+                };
+
+                // 發佈響應到指定的主題
+                client.publish(MQTT_CONFIG.publishTopic, JSON.stringify(responseMsg), { qos: 0, retain: false }, (err) => {
+                    if (!err) {
+                        console.log('響應消息已發送:', responseMsg);
+                        if (debugInfo) debugInfo.innerHTML += `響應已發送到: ${MQTT_CONFIG.publishTopic}<br>`;
+                    } else {
+                        console.error('發送響應失敗:', err);
+                        if (debugInfo) debugInfo.innerHTML += `發送響應失敗: ${err}<br>`;
+                    }
+                });
+            } catch (e) {
+                console.error('構建響應消息時出錯:', e);
+            }
+        }
+
+        /**
+         * 獲取當前日期時間字符串（如果接收到的消息中沒有提供）
+         */
+        function getCurrentDateTime() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            
+            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        }
 
         function updateUI(level, temp, sig, vol, time, shouldSave) {
             document.getElementById('level').innerText = level;
@@ -152,17 +233,19 @@
                 const shortTime = time.includes(' ') ? time.split(' ')[1] : time;
                 waterChart.data.labels.push(shortTime);
                 waterChart.data.datasets[0].data.push(level);
-                if (waterChart.data.labels.length > 50) { waterChart.data.labels.shift(); waterChart.data.datasets[0].data.shift(); }
+                if (waterChart.data.labels.length > 50) { 
+                    waterChart.data.labels.shift(); 
+                    waterChart.data.datasets[0].data.shift(); 
+                }
                 waterChart.update('none');
 
                 db.ref('latest_status').set({ level, temp, sig, vol, time });
             }
         }
 
-        // 修改重點：增加 isFirst 參數，讓第一次載入時跳過「確認兩次」的限制，直接顯示警報
         function updateWaterLogic(val, isFirst) {
             let lv = (val >= 300) ? 3 : (val >= 120 ? 2 : (val >= 70 ? 1 : 0));
-            currentLevel = lv; // 第一次開網頁，直接反映目前水位等級
+            currentLevel = lv;
         }
 
         function updateVolLogic(vol, isFirst) {
@@ -173,16 +256,37 @@
             const box = document.getElementById('alarm-box');
             if (currentLevel > 0) {
                 box.style.display = "block";
-                const colors = ["", "#443300", "#d35400", "#660000"]; // Lv2 使用橙色背景
+                const colors = ["", "#443300", "#d35400", "#660000"];
                 box.innerText = "【注意】中水位警告 Lv." + currentLevel;
                 document.body.style.background = colors[currentLevel];
             } else if (currentVolAlarm) {
-                box.style.display = "block"; box.innerText = "【注意】設備電池電量低";
-                box.style.background = "#555500"; document.body.style.background = "#333300";
+                box.style.display = "block"; 
+                box.innerText = "【注意】設備電池電量低";
+                box.style.background = "#555500"; 
+                document.body.style.background = "#333300";
             } else {
-                box.style.display = "none"; document.body.style.background = "#000";
+                box.style.display = "none"; 
+                document.body.style.background = "#000";
             }
         }
+
+        // 處理連接錯誤
+        client.on('error', (err) => {
+            console.error('MQTT 連接錯誤:', err);
+            document.getElementById('status').innerText = "MQTT 連接錯誤";
+            document.getElementById('status').className = "status-bar offline";
+        });
+
+        client.on('offline', () => {
+            console.log('MQTT 已離線');
+            document.getElementById('status').innerText = "MQTT 已離線";
+            document.getElementById('status').className = "status-bar offline";
+        });
+
+        client.on('reconnect', () => {
+            console.log('MQTT 重新連接中...');
+            document.getElementById('status').innerText = "MQTT 重新連接中...";
+        });
     </script>
 </body>
 </html>
