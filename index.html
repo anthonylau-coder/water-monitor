@@ -121,7 +121,8 @@
 
         // 連接到 MQTT Broker
         const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`, {
-            clientId: 'WEB_FINAL_' + Math.random().toString(16).slice(2, 8), 
+            //clientId: 'WEB_FINAL_' + Math.random().toString(16).slice(2, 8),
+            clientId: 'Water level detection portal (Websocket)', 
             username: MQTT_CONFIG.user, password: MQTT_CONFIG.pass,
             rejectUnauthorized: false
         });
@@ -290,4 +291,5 @@
     </script>
 </body>
 </html>
+
 
