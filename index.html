@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能水位監控 - V13 Firebase 實作版</title>
+    <title>智能水位監控 - Firebase 顯示版</title>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
@@ -25,18 +24,20 @@
         #alarm-box { display: none; padding: 15px; margin: 10px 0; border-radius: 8px; text-align: center; font-size: 18px; font-weight: bold; animation: blink 1.5s infinite; }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
         .chart-section { background: #111; padding: 10px; border-radius: 10px; height: 230px; }
-        #debug-info { background: #222; padding: 8px; border-radius: 5px; font-size: 11px; color: #aaa; margin-top: 10px; max-height: 80px; overflow-y: auto; display: none; }
+        .loading { text-align: center; padding: 20px; color: #666; }
+        .last-update { font-size: 11px; color: #444; text-align: right; margin-top: 5px; }
+        .data-source { font-size: 10px; color: #333; text-align: center; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-    <div id="status" class="status-bar offline">雲端初始化中...</div>
+    <div id="status" class="status-bar offline">連線至 Firebase...</div>
     <div id="alarm-box"></div>
 
     <div class="main-display">
         <div class="label">WATER LEVEL</div>
         <div class="value-row" style="display:flex; align-items:baseline;">
-            <div id="level" class="value">0</div>
+            <div id="level" class="value">--</div>
             <div class="unit">mm</div>
         </div>
         
@@ -53,12 +54,15 @@
         </div>
     </div>
 
-    <div class="chart-section"><canvas id="waterChart"></canvas></div>
-
-    <!-- 調試信息區（可選） -->
-    <div id="debug-info"></div>
+    <div class="chart-section">
+        <canvas id="waterChart"></canvas>
+    </div>
+    
+    <div class="last-update" id="lastUpdateTime"></div>
+    <div class="data-source">資料來源: Firebase 即時資料庫</div>
 
     <script>
+        // Firebase configuration
         const firebaseConfig = {
             apiKey: "AIzaSyBAzQFLLDACisyZN6CEIFunkA2by0LzocE",
             authDomain: "water-monitor-system-cbccd.firebaseapp.com",
@@ -69,196 +73,177 @@
             appId: "1:924884619328:web:0e187dd574cd54ee4e8fa5"
         };
 
+        // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-
-        // 更新後的 MQTT 配置 - 修改了訂閱主題
-        const MQTT_CONFIG = { 
-            host: 'mqtt.smart-waterpumpsystem.com', 
-            port: 8084, 
-            user: 'test', 
-            pass: 'test1234', 
-            subscribeTopic: '/waterlevel/866207074802772/status',  // 新訂閱主題
-            publishTopic: '/waterlevel/866207074802772/command'   // 發佈響應的主題
-        };
         
-        let currentLevel = 0, currentVolAlarm = false;
-        const debugInfo = document.getElementById('debug-info');
-
+        // Global variables
+        let currentLevel = 0;
+        let currentVolAlarm = false;
+        let historyData = [];
+        let chartInitialized = false;
+        
+        // Chart initialization
         const ctx = document.getElementById('waterChart').getContext('2d');
         const waterChart = new Chart(ctx, {
             type: 'line',
-            data: { labels: [], datasets: [{ data: [], borderColor: '#00ff00', backgroundColor: 'rgba(0, 255, 0, 0.1)', borderWidth: 2, fill: true, tension: 0.3, pointRadius: 2 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#444', font: {size: 9} } }, y: { beginAtZero: true, ticks: { color: '#444' } } } }
+            data: { 
+                labels: [], 
+                datasets: [{ 
+                    data: [], 
+                    borderColor: '#00ff00', 
+                    backgroundColor: 'rgba(0, 255, 0, 0.1)', 
+                    borderWidth: 2, 
+                    fill: true, 
+                    tension: 0.3, 
+                    pointRadius: 2 
+                }] 
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { 
+                    legend: { display: false } 
+                }, 
+                scales: { 
+                    x: { 
+                        ticks: { color: '#444', font: {size: 9} },
+                        grid: { color: '#222' }
+                    }, 
+                    y: { 
+                        beginAtZero: true, 
+                        ticks: { color: '#444' },
+                        grid: { color: '#222' }
+                    } 
+                } 
+            }
         });
 
-        // 初始化從 Firebase 加載數據
-        function initFromFirebase() {
-            db.ref('latest_status').once('value', (snapshot) => {
-                const val = snapshot.val();
-                if (val) {
-                    const levelVal = val.level !== undefined ? val.level : (Math.round(parseFloat(val.waterLevel || 0) * 1000));
-                    updateUI(levelVal, val.temp || val.waterTemperature, val.sig || val.signalStrength, val.vol || val.sensorVoltage, val.time, false);
-                    
-                    updateWaterLogic(levelVal, true); 
-                    updateVolLogic(parseFloat(val.vol || val.sensorVoltage), true);
-                    renderAlarmUI();
-                }
-            });
-            
-            db.ref('history').limitToLast(30).once('value', (snapshot) => {
-                waterChart.data.labels = []; waterChart.data.datasets[0].data = [];
-                snapshot.forEach((child) => {
-                    const d = child.val();
-                    const shortTime = d.time.includes(' ') ? d.time.split(' ')[1] : d.time;
-                    waterChart.data.labels.push(shortTime);
-                    waterChart.data.datasets[0].data.push(d.level || Math.round(parseFloat(d.waterLevel || 0) * 1000));
-                });
-                waterChart.update();
-            });
-        }
-        initFromFirebase();
+        // ==================== FIREBASE DATA LISTENERS ====================
 
-        // 連接到 MQTT Broker
-        const client = mqtt.connect(`wss://${MQTT_CONFIG.host}:${MQTT_CONFIG.port}/mqtt`, {
-            //clientId: 'WEB_FINAL_' + Math.random().toString(16).slice(2, 8),
-            clientId: 'Water level detection portal (Websocket)', 
-            username: MQTT_CONFIG.user, password: MQTT_CONFIG.pass,
-            rejectUnauthorized: false
-        });
-
-        client.on('connect', () => {
-            document.getElementById('status').innerText = "● 雙軌連線成功 (MQTT 已激活)";
-            document.getElementById('status').className = "status-bar online";
-            
-            // 訂閱新的主題
-            client.subscribe(MQTT_CONFIG.subscribeTopic, (err) => {
-                if (!err) {
-                    console.log(`已訂閱主題: ${MQTT_CONFIG.subscribeTopic}`);
-                    if (debugInfo) debugInfo.innerHTML += `訂閱成功: ${MQTT_CONFIG.subscribeTopic}<br>`;
+        // Listen for latest status changes
+        function setupFirebaseListeners() {
+            // Update connection status
+            const connectedRef = db.ref('.info/connected');
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    document.getElementById('status').innerText = "● 已連接至 Firebase";
+                    document.getElementById('status').className = "status-bar online";
                 } else {
-                    console.error('訂閱失敗:', err);
-                    if (debugInfo) debugInfo.innerHTML += `訂閱失敗: ${err}<br>`;
+                    document.getElementById('status').innerText = "○  Firebase 離線";
+                    document.getElementById('status').className = "status-bar offline";
                 }
             });
-        });
 
-        client.on('message', (topic, message) => {
-            try {
-                const data = JSON.parse(message.toString());
-                console.log('收到 MQTT 消息:', data);
-                
-                // 顯示調試信息
-                if (debugInfo) {
-                    debugInfo.innerHTML = `收到消息: ${new Date().toLocaleTimeString()}<br>`;
-                    debugInfo.style.display = 'block';
+            // Listen for latest status
+            const latestStatusRef = db.ref('latest_status');
+            latestStatusRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    updateUIFromFirebase(data);
+                    updateAlarmLogic(data);
+                } else {
+                    console.log('No latest status data available');
+                    document.getElementById('level').innerText = '--';
+                    document.getElementById('temp').innerText = '--.-';
                 }
+            }, (error) => {
+                console.error('Error reading latest status:', error);
+                document.getElementById('status').innerText = "Firebase 讀取錯誤";
+            });
+
+            // Listen for history data (last 30 entries)
+            const historyRef = db.ref('history').orderByKey().limitToLast(30);
+            historyRef.on('value', (snapshot) => {
+                const history = [];
+                const labels = [];
+                const values = [];
                 
-                const now = new Date();
-                const timeStr = now.toLocaleDateString('zh-HK') + " " + now.toLocaleTimeString('zh-HK', { hour12: false });
-                
-                // 單位自動換算：0.021m -> 21mm
-                const rawLv = parseFloat(data.waterLevel || 0);
-                const mm = rawLv < 5 ? Math.round(rawLv * 1000) : Math.round(rawLv);
-                const temp = parseFloat(data.waterTemperature || 0).toFixed(1);
-                const vol = parseFloat(data.sensorVoltage || 0).toFixed(2);
-                const sig = data.signalStrength || "--";
-
-                // 更新 UI
-                updateUI(mm, temp, sig, vol, timeStr, true);
-                updateWaterLogic(mm, false);
-                updateVolLogic(parseFloat(vol), false);
-                renderAlarmUI();
-
-                // === 新增功能：收到消息後立即返回響應 ===
-                sendResponseMessage(data);
-                
-            } catch (e) { 
-                console.error('處理 MQTT 消息時出錯:', e);
-                if (debugInfo) debugInfo.innerHTML += `錯誤: ${e}<br>`;
-            }
-        });
-
-        /**
-         * 發送響應消息
-         * @param {Object} receivedData - 接收到的原始數據
-         */
-        function sendResponseMessage(receivedData) {
-            try {
-                // 構建響應消息
-                const responseMsg = {
-                    "msg": "Message Received",
-                    "collectionTime": receivedData.collectionTime || getCurrentDateTime(),
-                    "code": 200,
-                    "deviceCode": receivedData.deviceCode || "2025122201"
-                };
-
-                // 發佈響應到指定的主題
-                client.publish(MQTT_CONFIG.publishTopic, JSON.stringify(responseMsg), { qos: 0, retain: false }, (err) => {
-                    if (!err) {
-                        console.log('響應消息已發送:', responseMsg);
-                        if (debugInfo) debugInfo.innerHTML += `響應已發送到: ${MQTT_CONFIG.publishTopic}<br>`;
+                snapshot.forEach((child) => {
+                    const data = child.val();
+                    history.push(data);
+                    
+                    // Format time for chart
+                    let timeLabel = '';
+                    if (data.collectionTime) {
+                        const timeParts = data.collectionTime.split(' ');
+                        timeLabel = timeParts.length > 1 ? timeParts[1].substring(0, 5) : data.collectionTime.substring(0, 5);
+                    } else if (data.time) {
+                        const timeParts = data.time.split(' ');
+                        timeLabel = timeParts.length > 1 ? timeParts[1].substring(0, 5) : data.time.substring(0, 5);
                     } else {
-                        console.error('發送響應失敗:', err);
-                        if (debugInfo) debugInfo.innerHTML += `發送響應失敗: ${err}<br>`;
+                        timeLabel = '--:--';
                     }
+                    
+                    labels.push(timeLabel);
+                    
+                    // Get level value
+                    let levelValue = data.level || data.waterLevel_mm || 0;
+                    if (data.waterLevel && !levelValue) {
+                        levelValue = Math.round(parseFloat(data.waterLevel) * 1000);
+                    }
+                    values.push(levelValue);
                 });
-            } catch (e) {
-                console.error('構建響應消息時出錯:', e);
-            }
+                
+                // Update chart
+                updateChart(labels, values);
+                
+            }, (error) => {
+                console.error('Error reading history:', error);
+            });
         }
 
-        /**
-         * 獲取當前日期時間字符串（如果接收到的消息中沒有提供）
-         */
-        function getCurrentDateTime() {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const day = String(now.getDate()).padStart(2, '0');
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
+        // Update UI with Firebase data
+        function updateUIFromFirebase(data) {
+            // Extract values with proper defaults
+            const level = data.level || data.waterLevel_mm || 0;
+            const temp = data.temp || data.waterTemperature || '--.-';
+            const sig = data.sig || data.signalStrength || '--';
+            const vol = data.vol || data.sensorVoltage || '--';
+            const time = data.time || data.collectionTime || getCurrentTimeString();
             
-            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-        }
-
-        function updateUI(level, temp, sig, vol, time, shouldSave) {
+            // Update display
             document.getElementById('level').innerText = level;
             document.getElementById('temp').innerText = temp;
             document.getElementById('sig_display').innerText = sig;
             document.getElementById('vol_display').innerText = vol;
             document.getElementById('full_date').innerText = "更新時間: " + time;
-
-            if (shouldSave) {
-                const shortTime = time.includes(' ') ? time.split(' ')[1] : time;
-                waterChart.data.labels.push(shortTime);
-                waterChart.data.datasets[0].data.push(level);
-                if (waterChart.data.labels.length > 50) { 
-                    waterChart.data.labels.shift(); 
-                    waterChart.data.datasets[0].data.shift(); 
-                }
-                waterChart.update('none');
-
-                db.ref('latest_status').set({ level, temp, sig, vol, time });
-            }
+            
+            // Update last update time
+            document.getElementById('lastUpdateTime').innerText = "最後更新: " + new Date().toLocaleString('zh-HK');
         }
 
-        function updateWaterLogic(val, isFirst) {
-            let lv = (val >= 300) ? 3 : (val >= 120 ? 2 : (val >= 70 ? 1 : 0));
-            currentLevel = lv;
+        // Update alarm logic based on Firebase data
+        function updateAlarmLogic(data) {
+            // Update water level alarm
+            const level = parseInt(data.level || data.waterLevel_mm || 0);
+            currentLevel = (level >= 300) ? 3 : (level >= 120 ? 2 : (level >= 70 ? 1 : 0));
+            
+            // Update voltage alarm
+            const voltage = parseFloat(data.vol || data.sensorVoltage || 5);
+            currentVolAlarm = (voltage > 0 && voltage < 3.4);
+            
+            // Render alarm UI
+            renderAlarmUI();
         }
 
-        function updateVolLogic(vol, isFirst) {
-            currentVolAlarm = (vol > 0 && vol < 3.4);
+        // Update chart with new data
+        function updateChart(labels, values) {
+            waterChart.data.labels = labels;
+            waterChart.data.datasets[0].data = values;
+            waterChart.update('none');
         }
 
+        // Render alarm box based on current state
         function renderAlarmUI() {
             const box = document.getElementById('alarm-box');
+            
             if (currentLevel > 0) {
                 box.style.display = "block";
                 const colors = ["", "#443300", "#d35400", "#660000"];
-                box.innerText = "【注意】中水位警告 Lv." + currentLevel;
+                const messages = ["", "低水位警告 Lv.1", "中水位警告 Lv.2", "高水位警告 Lv.3"];
+                box.innerText = "【注意】" + messages[currentLevel];
+                box.style.background = colors[currentLevel];
                 document.body.style.background = colors[currentLevel];
             } else if (currentVolAlarm) {
                 box.style.display = "block"; 
@@ -271,26 +256,49 @@
             }
         }
 
-        // 處理連接錯誤
-        client.on('error', (err) => {
-            console.error('MQTT 連接錯誤:', err);
-            document.getElementById('status').innerText = "MQTT 連接錯誤";
-            document.getElementById('status').className = "status-bar offline";
-        });
+        // Helper function to get current time string
+        function getCurrentTimeString() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            
+            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        }
 
-        client.on('offline', () => {
-            console.log('MQTT 已離線');
-            document.getElementById('status').innerText = "MQTT 已離線";
-            document.getElementById('status').className = "status-bar offline";
-        });
+        // Initialize data from Firebase once (for immediate display)
+        function initializeFromFirebase() {
+            db.ref('latest_status').once('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    updateUIFromFirebase(data);
+                    updateAlarmLogic(data);
+                }
+            }).catch(error => {
+                console.error('Error initializing from Firebase:', error);
+            });
+        }
 
-        client.on('reconnect', () => {
-            console.log('MQTT 重新連接中...');
-            document.getElementById('status').innerText = "MQTT 重新連接中...";
-        });
+        // ==================== INITIALIZATION ====================
+
+        // Start the application
+        function init() {
+            console.log('Initializing Firebase display...');
+            initializeFromFirebase();
+            setupFirebaseListeners();
+        }
+
+        // Run initialization when page loads
+        window.addEventListener('load', init);
+
+        // Optional: Add manual refresh button functionality
+        function refreshData() {
+            initializeFromFirebase();
+        }
+
     </script>
 </body>
 </html>
-
-
-
