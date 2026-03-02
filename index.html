@@ -3,63 +3,273 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能水位監控 - Firebase 顯示版</title>
+    <title>智能水位監控 - Firebase 即時顯示版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
 
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #000; color: #fff; margin: 0; padding: 15px; transition: background 0.8s; }
-        .status-bar { padding: 10px; font-size: 14px; text-align: center; margin-bottom: 15px; border-radius: 8px; font-weight: bold; border: 1px solid transparent; }
+        * { box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: #000; 
+            color: #fff; 
+            margin: 0; 
+            padding: 15px; 
+            transition: background 0.8s;
+            min-height: 100vh;
+        }
+        .status-bar { 
+            padding: 10px; 
+            font-size: 14px; 
+            text-align: center; 
+            margin-bottom: 15px; 
+            border-radius: 8px; 
+            font-weight: bold; 
+            border: 1px solid transparent;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
         .online { background: rgba(0, 68, 0, 0.8); color: #00ff00; border-color: #00ff00; }
         .offline { background: rgba(68, 0, 0, 0.8); color: #ff0000; border-color: #ff0000; }
-        .main-display { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px; }
-        .label { font-size: 12px; color: #888; letter-spacing: 1px; }
-        .value { font-size: 80px; font-weight: bold; color: #00ff00; transform: scale(0.9, 1); transform-origin: left; line-height: 1; }
-        .unit { font-size: 24px; color: #00ff00; margin-left: 5px; }
-        .temp-val { font-size: 30px; font-weight: bold; color: #00ffff; }
-        .temp-unit { font-size: 16px; color: #00ffff; margin-left: 5px; }
-        .sub-data { display: flex; justify-content: space-between; font-size: 12px; color: #666; margin-top: 10px; }
-        #alarm-box { display: none; padding: 15px; margin: 10px 0; border-radius: 8px; text-align: center; font-size: 18px; font-weight: bold; animation: blink 1.5s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
-        .chart-section { background: #111; padding: 10px; border-radius: 10px; height: 230px; }
-        .loading { text-align: center; padding: 20px; color: #666; }
-        .last-update { font-size: 11px; color: #444; text-align: right; margin-top: 5px; }
-        .data-source { font-size: 10px; color: #333; text-align: center; margin-top: 10px; }
+        .refresh-btn {
+            background: transparent;
+            border: 1px solid currentColor;
+            color: inherit;
+            border-radius: 4px;
+            padding: 4px 10px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+        .refresh-btn:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .main-display { 
+            border-bottom: 1px solid #333; 
+            padding-bottom: 15px; 
+            margin-bottom: 15px; 
+        }
+        .label { 
+            font-size: 12px; 
+            color: #888; 
+            letter-spacing: 1px; 
+            margin-bottom: 5px;
+        }
+        .value { 
+            font-size: 80px; 
+            font-weight: bold; 
+            color: #00ff00; 
+            transform: scale(0.9, 1); 
+            transform-origin: left; 
+            line-height: 1; 
+            display: inline-block;
+        }
+        .unit { 
+            font-size: 24px; 
+            color: #00ff00; 
+            margin-left: 5px; 
+            display: inline-block;
+        }
+        .temp-val { 
+            font-size: 30px; 
+            font-weight: bold; 
+            color: #00ffff; 
+        }
+        .temp-unit { 
+            font-size: 16px; 
+            color: #00ffff; 
+            margin-left: 5px; 
+        }
+        .sub-data { 
+            display: flex; 
+            justify-content: space-between; 
+            font-size: 12px; 
+            color: #666; 
+            margin-top: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .sub-data-item {
+            background: #111;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        #alarm-box { 
+            display: none; 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 8px; 
+            text-align: center; 
+            font-size: 18px; 
+            font-weight: bold; 
+            animation: blink 1.5s infinite; 
+        }
+        @keyframes blink { 
+            0% { opacity: 1; } 
+            50% { opacity: 0.7; } 
+            100% { opacity: 1; } 
+        }
+        .chart-section { 
+            background: #111; 
+            padding: 15px; 
+            border-radius: 10px; 
+            height: 300px;
+            margin-top: 20px;
+        }
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            color: #888;
+            font-size: 12px;
+        }
+        .chart-controls {
+            display: flex;
+            gap: 5px;
+        }
+        .chart-btn {
+            background: #222;
+            border: 1px solid #444;
+            color: #888;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.3s;
+        }
+        .chart-btn:hover {
+            background: #333;
+            color: #fff;
+        }
+        .chart-btn.active {
+            background: #00ff00;
+            color: #000;
+            border-color: #00ff00;
+        }
+        .loading { 
+            text-align: center; 
+            padding: 40px; 
+            color: #666;
+            font-size: 14px;
+        }
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            margin-left: 10px;
+            border: 2px solid #666;
+            border-top-color: #00ff00;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .last-update { 
+            font-size: 11px; 
+            color: #444; 
+            text-align: right; 
+            margin-top: 5px; 
+        }
+        .data-source { 
+            font-size: 10px; 
+            color: #333; 
+            text-align: center; 
+            margin-top: 10px; 
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .stat-card {
+            background: #111;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-label {
+            font-size: 11px;
+            color: #666;
+        }
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #00ff00;
+        }
     </style>
 </head>
 <body>
 
-    <div id="status" class="status-bar offline">連線至 Firebase...</div>
+    <div id="status" class="status-bar offline">
+        <span>連線至 Firebase...</span>
+        <button class="refresh-btn" onclick="refreshAllData()">🔄 手動刷新</button>
+    </div>
+    
     <div id="alarm-box"></div>
 
     <div class="main-display">
         <div class="label">WATER LEVEL</div>
-        <div class="value-row" style="display:flex; align-items:baseline;">
+        <div>
             <div id="level" class="value">--</div>
             <div class="unit">mm</div>
         </div>
         
-        <div class="label" style="margin-top:10px;">TEMPERATURE</div>
-        <div style="display:flex; align-items:baseline;">
+        <div class="label" style="margin-top:15px;">TEMPERATURE</div>
+        <div>
             <div id="temp" class="temp-val">--.-</div>
             <div class="temp-unit">°C</div>
         </div>
 
         <div class="sub-data">
-            <div id="full_date" style="width: 100%; color: #aaa; margin-bottom: 5px;">更新時間: 讀取雲端中...</div>
-            <span>訊號: <span id="sig_display">--</span> dBm</span>
-            <span>電壓: <span id="vol_display" style="font-weight:bold;">--</span> V</span>
+            <div class="sub-data-item">
+                <span>📶 訊號: <span id="sig_display" style="color:#00ff00;">--</span> dBm</span>
+            </div>
+            <div class="sub-data-item">
+                <span>⚡ 電壓: <span id="vol_display" style="color:#00ff00; font-weight:bold;">--</span> V</span>
+            </div>
+            <div class="sub-data-item">
+                <span>📱 設備: <span id="device_display" style="color:#00ff00;">--</span></span>
+            </div>
+        </div>
+        
+        <div id="full_date" style="color: #aaa; margin-top: 10px; font-size: 13px; text-align: right;">
+            更新時間: 讀取雲端中...
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">今日最高</div>
+            <div class="stat-value" id="todayMax">-- mm</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">今日平均</div>
+            <div class="stat-value" id="todayAvg">-- mm</div>
         </div>
     </div>
 
     <div class="chart-section">
+        <div class="chart-header">
+            <span>📊 水位歷史趨勢</span>
+            <div class="chart-controls">
+                <button class="chart-btn" onclick="loadHistoryData(10)">10筆</button>
+                <button class="chart-btn active" onclick="loadHistoryData(30)">30筆</button>
+                <button class="chart-btn" onclick="loadHistoryData(50)">50筆</button>
+            </div>
+        </div>
         <canvas id="waterChart"></canvas>
     </div>
     
     <div class="last-update" id="lastUpdateTime"></div>
-    <div class="data-source">資料來源: Firebase 即時資料庫</div>
+    <div class="data-source">📡 資料來源: Firebase 即時資料庫</div>
 
     <script>
         // Firebase configuration
@@ -80,8 +290,9 @@
         // Global variables
         let currentLevel = 0;
         let currentVolAlarm = false;
-        let historyData = [];
-        let chartInitialized = false;
+        let currentDeviceCode = '--';
+        let chartDataLimit = 30; // Default chart data limit
+        let chartUpdateTimer = null;
         
         // Chart initialization
         const ctx = document.getElementById('waterChart').getContext('2d');
@@ -90,107 +301,190 @@
             data: { 
                 labels: [], 
                 datasets: [{ 
+                    label: '水位 (mm)',
                     data: [], 
                     borderColor: '#00ff00', 
                     backgroundColor: 'rgba(0, 255, 0, 0.1)', 
                     borderWidth: 2, 
                     fill: true, 
                     tension: 0.3, 
-                    pointRadius: 2 
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: '#00ff00',
+                    pointBorderColor: '#fff'
                 }] 
             },
             options: { 
                 responsive: true, 
                 maintainAspectRatio: false, 
                 plugins: { 
-                    legend: { display: false } 
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                return `水位: ${context.raw} mm`;
+                            }
+                        }
+                    }
                 }, 
                 scales: { 
                     x: { 
-                        ticks: { color: '#444', font: {size: 9} },
-                        grid: { color: '#222' }
+                        ticks: { color: '#888', font: {size: 10} },
+                        grid: { color: '#222' },
+                        title: {
+                            display: true,
+                            text: '時間',
+                            color: '#666'
+                        }
                     }, 
                     y: { 
                         beginAtZero: true, 
-                        ticks: { color: '#444' },
-                        grid: { color: '#222' }
+                        ticks: { color: '#888' },
+                        grid: { color: '#222' },
+                        title: {
+                            display: true,
+                            text: '水位 (mm)',
+                            color: '#666'
+                        }
                     } 
-                } 
+                },
+                animation: {
+                    duration: 500
+                }
             }
         });
 
         // ==================== FIREBASE DATA LISTENERS ====================
 
-        // Listen for latest status changes
+        // Setup all Firebase listeners
         function setupFirebaseListeners() {
             // Update connection status
             const connectedRef = db.ref('.info/connected');
             connectedRef.on('value', (snap) => {
+                const statusEl = document.getElementById('status');
+                const statusSpan = statusEl.querySelector('span');
                 if (snap.val() === true) {
-                    document.getElementById('status').innerText = "● 已連接至 Firebase";
-                    document.getElementById('status').className = "status-bar online";
+                    statusSpan.innerText = "● 已連接至 Firebase";
+                    statusEl.className = "status-bar online";
                 } else {
-                    document.getElementById('status').innerText = "○  Firebase 離線";
-                    document.getElementById('status').className = "status-bar offline";
+                    statusSpan.innerText = "○ Firebase 離線";
+                    statusEl.className = "status-bar offline";
                 }
             });
 
-            // Listen for latest status
+            // Listen for latest status changes
             const latestStatusRef = db.ref('latest_status');
             latestStatusRef.on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data) {
                     updateUIFromFirebase(data);
                     updateAlarmLogic(data);
-                } else {
-                    console.log('No latest status data available');
-                    document.getElementById('level').innerText = '--';
-                    document.getElementById('temp').innerText = '--.-';
+                    updateStatistics(data);
                 }
             }, (error) => {
                 console.error('Error reading latest status:', error);
-                document.getElementById('status').innerText = "Firebase 讀取錯誤";
             });
 
-            // Listen for history data (last 30 entries)
-            const historyRef = db.ref('history').orderByKey().limitToLast(30);
-            historyRef.on('value', (snapshot) => {
-                const history = [];
+            // Load initial history data
+            loadHistoryData(chartDataLimit);
+        }
+
+        // Load history data with specified limit
+        function loadHistoryData(limit = 30) {
+            // Update active button
+            document.querySelectorAll('.chart-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent.includes(limit.toString())) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            chartDataLimit = limit;
+            
+            // Show loading state
+            waterChart.data.labels = ['載入中...'];
+            waterChart.data.datasets[0].data = [null];
+            waterChart.update();
+            
+            // Get history data from Firebase
+            const historyRef = db.ref('history').orderByKey().limitToLast(limit);
+            historyRef.once('value', (snapshot) => {
                 const labels = [];
                 const values = [];
+                let maxValue = 0;
                 
+                // Convert to array and reverse to show chronological order
+                const entries = [];
                 snapshot.forEach((child) => {
-                    const data = child.val();
-                    history.push(data);
+                    entries.push({ key: child.key, value: child.val() });
+                });
+                
+                // Reverse to show oldest first
+                entries.reverse();
+                
+                entries.forEach((entry) => {
+                    const data = entry.value;
                     
                     // Format time for chart
-                    let timeLabel = '';
-                    if (data.collectionTime) {
-                        const timeParts = data.collectionTime.split(' ');
-                        timeLabel = timeParts.length > 1 ? timeParts[1].substring(0, 5) : data.collectionTime.substring(0, 5);
-                    } else if (data.time) {
-                        const timeParts = data.time.split(' ');
-                        timeLabel = timeParts.length > 1 ? timeParts[1].substring(0, 5) : data.time.substring(0, 5);
-                    } else {
-                        timeLabel = '--:--';
-                    }
-                    
+                    let timeLabel = formatTimeForChart(data);
                     labels.push(timeLabel);
                     
                     // Get level value
-                    let levelValue = data.level || data.waterLevel_mm || 0;
-                    if (data.waterLevel && !levelValue) {
-                        levelValue = Math.round(parseFloat(data.waterLevel) * 1000);
-                    }
+                    let levelValue = extractLevelValue(data);
                     values.push(levelValue);
+                    
+                    // Track max value for statistics
+                    if (levelValue > maxValue) maxValue = levelValue;
                 });
                 
                 // Update chart
                 updateChart(labels, values);
                 
+                // Update statistics
+                if (values.length > 0) {
+                    const avg = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+                    document.getElementById('todayMax').innerText = maxValue + ' mm';
+                    document.getElementById('todayAvg').innerText = avg + ' mm';
+                }
+                
+                console.log(`Loaded ${values.length} history entries`);
+                
             }, (error) => {
-                console.error('Error reading history:', error);
+                console.error('Error loading history:', error);
+                waterChart.data.labels = ['錯誤'];
+                waterChart.data.datasets[0].data = [null];
+                waterChart.update();
             });
+        }
+
+        // Format time for chart display
+        function formatTimeForChart(data) {
+            if (data.collectionTime) {
+                const timeParts = data.collectionTime.split(' ');
+                if (timeParts.length > 1) {
+                    return timeParts[1].substring(0, 5); // HH:MM
+                }
+                return data.collectionTime.substring(0, 5);
+            } else if (data.time) {
+                const timeParts = data.time.split(' ');
+                if (timeParts.length > 1) {
+                    return timeParts[1].substring(0, 5);
+                }
+                return data.time.substring(0, 5);
+            }
+            return '--:--';
+        }
+
+        // Extract level value from various data formats
+        function extractLevelValue(data) {
+            if (data.level !== undefined) return parseInt(data.level);
+            if (data.waterLevel_mm !== undefined) return parseInt(data.waterLevel_mm);
+            if (data.waterLevel) {
+                return Math.round(parseFloat(data.waterLevel) * 1000);
+            }
+            return 0;
         }
 
         // Update UI with Firebase data
@@ -201,16 +495,20 @@
             const sig = data.sig || data.signalStrength || '--';
             const vol = data.vol || data.sensorVoltage || '--';
             const time = data.time || data.collectionTime || getCurrentTimeString();
+            const deviceCode = data.deviceCode || '2025122201';
             
             // Update display
             document.getElementById('level').innerText = level;
             document.getElementById('temp').innerText = temp;
             document.getElementById('sig_display').innerText = sig;
             document.getElementById('vol_display').innerText = vol;
-            document.getElementById('full_date').innerText = "更新時間: " + time;
+            document.getElementById('device_display').innerText = deviceCode;
+            document.getElementById('full_date').innerHTML = "⏱️ 更新時間: " + time;
             
             // Update last update time
-            document.getElementById('lastUpdateTime').innerText = "最後更新: " + new Date().toLocaleString('zh-HK');
+            document.getElementById('lastUpdateTime').innerText = "最後頁面更新: " + new Date().toLocaleString('zh-HK');
+            
+            currentDeviceCode = deviceCode;
         }
 
         // Update alarm logic based on Firebase data
@@ -227,11 +525,16 @@
             renderAlarmUI();
         }
 
+        // Update statistics based on latest data
+        function updateStatistics(latestData) {
+            // This will be updated when history loads
+        }
+
         // Update chart with new data
         function updateChart(labels, values) {
             waterChart.data.labels = labels;
             waterChart.data.datasets[0].data = values;
-            waterChart.update('none');
+            waterChart.update();
         }
 
         // Render alarm box based on current state
@@ -241,13 +544,13 @@
             if (currentLevel > 0) {
                 box.style.display = "block";
                 const colors = ["", "#443300", "#d35400", "#660000"];
-                const messages = ["", "低水位警告 Lv.1", "中水位警告 Lv.2", "高水位警告 Lv.3"];
-                box.innerText = "【注意】" + messages[currentLevel];
+                const messages = ["", "⚠️ 低水位警告 Lv.1", "⚠️ 中水位警告 Lv.2", "⚠️ 高水位警告 Lv.3"];
+                box.innerText = messages[currentLevel];
                 box.style.background = colors[currentLevel];
                 document.body.style.background = colors[currentLevel];
             } else if (currentVolAlarm) {
                 box.style.display = "block"; 
-                box.innerText = "【注意】設備電池電量低";
+                box.innerText = "⚠️ 設備電池電量低";
                 box.style.background = "#555500"; 
                 document.body.style.background = "#333300";
             } else {
@@ -271,15 +574,56 @@
 
         // Initialize data from Firebase once (for immediate display)
         function initializeFromFirebase() {
-            db.ref('latest_status').once('value', (snapshot) => {
-                const data = snapshot.val();
-                if (data) {
-                    updateUIFromFirebase(data);
-                    updateAlarmLogic(data);
-                }
-            }).catch(error => {
-                console.error('Error initializing from Firebase:', error);
+            return db.ref('latest_status').once('value')
+                .then((snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        updateUIFromFirebase(data);
+                        updateAlarmLogic(data);
+                    }
+                    return data;
+                })
+                .catch(error => {
+                    console.error('Error initializing from Firebase:', error);
+                });
+        }
+
+        // Refresh all data manually
+        function refreshAllData() {
+            const refreshBtn = document.querySelector('.refresh-btn');
+            const originalText = refreshBtn.innerText;
+            refreshBtn.innerText = '🔄 刷新中...';
+            refreshBtn.disabled = true;
+            
+            Promise.all([
+                initializeFromFirebase(),
+                loadHistoryData(chartDataLimit)
+            ]).then(() => {
+                setTimeout(() => {
+                    refreshBtn.innerText = originalText;
+                    refreshBtn.disabled = false;
+                    
+                    // Show success message temporarily
+                    const statusSpan = document.querySelector('#status span');
+                    const originalStatus = statusSpan.innerText;
+                    statusSpan.innerText = '✓ 資料已刷新';
+                    setTimeout(() => {
+                        statusSpan.innerText = originalStatus;
+                    }, 2000);
+                }, 500);
             });
+        }
+
+        // Auto-refresh chart every 30 seconds
+        function startAutoRefresh() {
+            if (chartUpdateTimer) {
+                clearInterval(chartUpdateTimer);
+            }
+            
+            chartUpdateTimer = setInterval(() => {
+                console.log('Auto-refreshing chart...');
+                loadHistoryData(chartDataLimit);
+            }, 30000); // Refresh every 30 seconds
         }
 
         // ==================== INITIALIZATION ====================
@@ -287,17 +631,33 @@
         // Start the application
         function init() {
             console.log('Initializing Firebase display...');
-            initializeFromFirebase();
+            
+            // Show loading state
+            document.getElementById('level').innerText = '--';
+            
+            // Initialize data
+            initializeFromFirebase().then(() => {
+                loadHistoryData(chartDataLimit);
+                startAutoRefresh();
+            });
+            
+            // Setup real-time listeners
             setupFirebaseListeners();
         }
 
         // Run initialization when page loads
         window.addEventListener('load', init);
 
-        // Optional: Add manual refresh button functionality
-        function refreshData() {
-            initializeFromFirebase();
-        }
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (chartUpdateTimer) {
+                clearInterval(chartUpdateTimer);
+            }
+        });
+
+        // Make functions available globally
+        window.loadHistoryData = loadHistoryData;
+        window.refreshAllData = refreshAllData;
 
     </script>
 </body>
