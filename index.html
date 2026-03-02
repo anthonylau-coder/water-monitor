@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能水位監控 - Firebase 即時顯示版</title>
+    <title>智能水位監控 - 完整數據顯示版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
@@ -94,8 +94,18 @@
         }
         .sub-data-item {
             background: #111;
-            padding: 5px 10px;
-            border-radius: 4px;
+            padding: 8px 15px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .sub-data-item span:first-child {
+            color: #888;
+        }
+        .sub-data-item .value-highlight {
+            color: #00ff00;
+            font-weight: bold;
         }
         #alarm-box { 
             display: none; 
@@ -116,7 +126,7 @@
             background: #111; 
             padding: 15px; 
             border-radius: 10px; 
-            height: 300px;
+            height: 400px;
             margin-top: 20px;
         }
         .chart-header {
@@ -156,21 +166,6 @@
             color: #666;
             font-size: 14px;
         }
-        .loading::after {
-            content: '';
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            margin-left: 10px;
-            border: 2px solid #666;
-            border-top-color: #00ff00;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            vertical-align: middle;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
         .last-update { 
             font-size: 11px; 
             color: #444; 
@@ -185,7 +180,7 @@
         }
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 10px;
             margin-top: 15px;
         }
@@ -194,15 +189,76 @@
             padding: 10px;
             border-radius: 8px;
             text-align: center;
+            border: 1px solid #222;
+            transition: all 0.3s;
+        }
+        .stat-card:hover {
+            border-color: #00ff00;
+            transform: translateY(-2px);
         }
         .stat-label {
             font-size: 11px;
             color: #666;
+            margin-bottom: 5px;
         }
         .stat-value {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: bold;
             color: #00ff00;
+        }
+        .stat-unit {
+            font-size: 10px;
+            color: #666;
+            margin-left: 2px;
+        }
+        
+        /* Custom tooltip styles */
+        .custom-tooltip {
+            background: rgba(20, 20, 20, 0.95);
+            border: 1px solid #00ff00;
+            border-radius: 8px;
+            padding: 12px;
+            color: #fff;
+            font-size: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            pointer-events: none;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+            min-width: 220px;
+        }
+        .tooltip-title {
+            color: #00ff00;
+            font-weight: bold;
+            margin-bottom: 8px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #333;
+            text-align: center;
+        }
+        .tooltip-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            padding: 3px 0;
+        }
+        .tooltip-label {
+            color: #888;
+        }
+        .tooltip-value {
+            color: #00ff00;
+            font-weight: bold;
+        }
+        .tooltip-value.temp { color: #00ffff; }
+        .tooltip-value.warning { color: #ff9900; }
+        .tooltip-divider {
+            height: 1px;
+            background: #333;
+            margin: 8px 0;
+        }
+        .tooltip-footer {
+            color: #666;
+            font-size: 10px;
+            text-align: center;
+            margin-top: 5px;
         }
     </style>
 </head>
@@ -218,51 +274,66 @@
     <div class="main-display">
         <div class="label">WATER LEVEL</div>
         <div>
-            <div id="level" class="value">--</div>
-            <div class="unit">mm</div>
+            <span id="level" class="value">--</span>
+            <span class="unit">mm</span>
         </div>
         
-        <div class="label" style="margin-top:15px;">TEMPERATURE</div>
+        <div class="label" style="margin-top:15px;">WATER TEMPERATURE</div>
         <div>
-            <div id="temp" class="temp-val">--.-</div>
-            <div class="temp-unit">°C</div>
+            <span id="temp" class="temp-val">--.-</span>
+            <span class="temp-unit">°C</span>
         </div>
 
         <div class="sub-data">
             <div class="sub-data-item">
-                <span>📶 訊號: <span id="sig_display" style="color:#00ff00;">--</span> dBm</span>
+                <span>📶 訊號強度</span>
+                <span class="value-highlight" id="sig_display">--</span>
+                <span>dBm</span>
             </div>
             <div class="sub-data-item">
-                <span>⚡ 電壓: <span id="vol_display" style="color:#00ff00; font-weight:bold;">--</span> V</span>
+                <span>⚡ 傳感器電壓</span>
+                <span class="value-highlight" id="sensor_vol_display">--</span>
+                <span>V</span>
             </div>
             <div class="sub-data-item">
-                <span>📱 設備: <span id="device_display" style="color:#00ff00;">--</span></span>
+                <span>🔋 繼電器電壓</span>
+                <span class="value-highlight" id="relay_vol_display">--</span>
+                <span>V</span>
             </div>
         </div>
         
         <div id="full_date" style="color: #aaa; margin-top: 10px; font-size: 13px; text-align: right;">
-            更新時間: 讀取雲端中...
+            ⏱️ 更新時間: 讀取雲端中...
         </div>
     </div>
 
     <div class="stats-grid">
         <div class="stat-card">
-            <div class="stat-label">今日最高</div>
-            <div class="stat-value" id="todayMax">-- mm</div>
+            <div class="stat-label">今日最高水位</div>
+            <div><span class="stat-value" id="todayMax">--</span><span class="stat-unit">mm</span></div>
         </div>
         <div class="stat-card">
-            <div class="stat-label">今日平均</div>
-            <div class="stat-value" id="todayAvg">-- mm</div>
+            <div class="stat-label">今日平均水位</div>
+            <div><span class="stat-value" id="todayAvg">--</span><span class="stat-unit">mm</span></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">平均電壓</div>
+            <div><span class="stat-value" id="avgVoltage">--</span><span class="stat-unit">V</span></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">數據點數量</div>
+            <div><span class="stat-value" id="dataPoints">--</span><span class="stat-unit">筆</span></div>
         </div>
     </div>
 
     <div class="chart-section">
         <div class="chart-header">
-            <span>📊 水位歷史趨勢</span>
+            <span>📊 水位歷史趨勢 (滑鼠移至數據點查看詳細資訊)</span>
             <div class="chart-controls">
                 <button class="chart-btn" onclick="loadHistoryData(10)">10筆</button>
                 <button class="chart-btn active" onclick="loadHistoryData(30)">30筆</button>
                 <button class="chart-btn" onclick="loadHistoryData(50)">50筆</button>
+                <button class="chart-btn" onclick="loadHistoryData(100)">100筆</button>
             </div>
         </div>
         <canvas id="waterChart"></canvas>
@@ -270,6 +341,9 @@
     
     <div class="last-update" id="lastUpdateTime"></div>
     <div class="data-source">📡 資料來源: Firebase 即時資料庫</div>
+
+    <!-- Custom tooltip container -->
+    <div id="chartTooltip" class="custom-tooltip" style="position: absolute; display: none;"></div>
 
     <script>
         // Firebase configuration
@@ -290,11 +364,11 @@
         // Global variables
         let currentLevel = 0;
         let currentVolAlarm = false;
-        let currentDeviceCode = '--';
-        let chartDataLimit = 30; // Default chart data limit
+        let chartDataLimit = 30;
         let chartUpdateTimer = null;
+        let historyDataStore = []; // Store complete history data for tooltips
         
-        // Chart initialization
+        // Chart initialization with custom plugin for tooltips
         const ctx = document.getElementById('waterChart').getContext('2d');
         const waterChart = new Chart(ctx, {
             type: 'line',
@@ -308,10 +382,12 @@
                     borderWidth: 2, 
                     fill: true, 
                     tension: 0.3, 
-                    pointRadius: 3,
-                    pointHoverRadius: 5,
+                    pointRadius: 4,
+                    pointHoverRadius: 8,
                     pointBackgroundColor: '#00ff00',
-                    pointBorderColor: '#fff'
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: '#00ff00'
                 }] 
             },
             options: { 
@@ -320,13 +396,8 @@
                 plugins: { 
                     legend: { display: false },
                     tooltip: {
-                        mode: 'index',
-                        intersect: false,
-                        callbacks: {
-                            label: function(context) {
-                                return `水位: ${context.raw} mm`;
-                            }
-                        }
+                        enabled: false, // Disable default tooltip
+                        external: customTooltipHandler // Use custom tooltip
                     }
                 }, 
                 scales: { 
@@ -351,16 +422,105 @@
                     } 
                 },
                 animation: {
-                    duration: 500
+                    duration: 300
+                },
+                hover: {
+                    mode: 'index',
+                    intersect: false
                 }
             }
         });
 
+        // Custom tooltip handler
+        function customTooltipHandler(context) {
+            const tooltipEl = document.getElementById('chartTooltip');
+            
+            // Hide if no tooltip
+            if (context.tooltip.opacity === 0) {
+                tooltipEl.style.display = 'none';
+                return;
+            }
+            
+            // Get data point
+            const dataIndex = context.tooltip.dataPoints[0].dataIndex;
+            const datasetIndex = context.tooltip.dataPoints[0].datasetIndex;
+            const rawValue = context.tooltip.dataPoints[0].raw;
+            
+            // Get complete data from store
+            const dataPoint = historyDataStore[dataIndex];
+            
+            if (!dataPoint) return;
+            
+            // Build tooltip HTML
+            let tooltipHtml = '<div class="tooltip-title">📊 完整數據</div>';
+            
+            // Time
+            tooltipHtml += `<div class="tooltip-row">
+                <span class="tooltip-label">⏱️ 時間</span>
+                <span class="tooltip-value">${dataPoint.time || dataPoint.collectionTime || '--'}</span>
+            </div>`;
+            
+            // Water Level
+            tooltipHtml += `<div class="tooltip-row">
+                <span class="tooltip-label">💧 水位</span>
+                <span class="tooltip-value">${dataPoint.waterLevel || dataPoint.level || '--'} mm</span>
+            </div>`;
+            
+            // Water Temperature
+            tooltipHtml += `<div class="tooltip-row">
+                <span class="tooltip-label">🌡️ 水溫</span>
+                <span class="tooltip-value temp">${dataPoint.waterTemperature || dataPoint.temp || '--'} °C</span>
+            </div>`;
+            
+            tooltipHtml += '<div class="tooltip-divider"></div>';
+            
+            // Sensor Voltage
+            tooltipHtml += `<div class="tooltip-row">
+                <span class="tooltip-label">⚡ 傳感器電壓</span>
+                <span class="tooltip-value">${dataPoint.sensorVoltage || dataPoint.vol || '--'} V</span>
+            </div>`;
+            
+            // Relay Voltage
+            tooltipHtml += `<div class="tooltip-row">
+                <span class="tooltip-label">🔋 繼電器電壓</span>
+                <span class="tooltip-value">${dataPoint.relayVoltage || '--'} V</span>
+            </div>`;
+            
+            // Signal Strength
+            tooltipHtml += `<div class="tooltip-row">
+                <span class="tooltip-label">📶 訊號強度</span>
+                <span class="tooltip-value">${dataPoint.signalStrength || dataPoint.sig || '--'} dBm</span>
+            </div>`;
+            
+            // Device Code
+            tooltipHtml += `<div class="tooltip-row">
+                <span class="tooltip-label">📱 設備編碼</span>
+                <span class="tooltip-value">${dataPoint.deviceCode || '2025122201'}</span>
+            </div>`;
+            
+            // Alarm Code if exists
+            if (dataPoint.alarmCode && dataPoint.alarmCode !== '0') {
+                tooltipHtml += `<div class="tooltip-row">
+                    <span class="tooltip-label">⚠️ 警報代碼</span>
+                    <span class="tooltip-value warning">${dataPoint.alarmCode}</span>
+                </div>`;
+            }
+            
+            tooltipHtml += '<div class="tooltip-footer">滑鼠移至其他點查看詳細數據</div>';
+            
+            tooltipEl.innerHTML = tooltipHtml;
+            
+            // Position tooltip
+            const position = context.tooltip;
+            tooltipEl.style.display = 'block';
+            tooltipEl.style.left = position.caretX + 'px';
+            tooltipEl.style.top = position.caretY - 20 + 'px';
+            tooltipEl.style.transform = 'translate(-50%, -100%)';
+        }
+
         // ==================== FIREBASE DATA LISTENERS ====================
 
-        // Setup all Firebase listeners
         function setupFirebaseListeners() {
-            // Update connection status
             const connectedRef = db.ref('.info/connected');
             connectedRef.on('value', (snap) => {
                 const statusEl = document.getElementById('status');
@@ -374,26 +534,21 @@
                 }
             });
 
-            // Listen for latest status changes
             const latestStatusRef = db.ref('latest_status');
             latestStatusRef.on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data) {
                     updateUIFromFirebase(data);
                     updateAlarmLogic(data);
-                    updateStatistics(data);
                 }
             }, (error) => {
                 console.error('Error reading latest status:', error);
             });
 
-            // Load initial history data
             loadHistoryData(chartDataLimit);
         }
 
-        // Load history data with specified limit
         function loadHistoryData(limit = 30) {
-            // Update active button
             document.querySelectorAll('.chart-btn').forEach(btn => {
                 btn.classList.remove('active');
                 if (btn.textContent.includes(limit.toString())) {
@@ -408,63 +563,75 @@
             waterChart.data.datasets[0].data = [null];
             waterChart.update();
             
-            // Get history data from Firebase
             const historyRef = db.ref('history').orderByKey().limitToLast(limit);
             historyRef.once('value', (snapshot) => {
                 const labels = [];
                 const values = [];
+                const store = [];
                 let maxValue = 0;
+                let totalValue = 0;
+                let totalVoltage = 0;
+                let voltageCount = 0;
                 
-                // Convert to array and reverse to show chronological order
                 const entries = [];
                 snapshot.forEach((child) => {
                     entries.push({ key: child.key, value: child.val() });
                 });
                 
-                // Reverse to show oldest first
                 entries.reverse();
                 
                 entries.forEach((entry) => {
                     const data = entry.value;
+                    store.push(data); // Store complete data for tooltips
                     
-                    // Format time for chart
                     let timeLabel = formatTimeForChart(data);
                     labels.push(timeLabel);
                     
-                    // Get level value
                     let levelValue = extractLevelValue(data);
                     values.push(levelValue);
                     
-                    // Track max value for statistics
                     if (levelValue > maxValue) maxValue = levelValue;
+                    totalValue += levelValue;
+                    
+                    // Calculate average voltage
+                    if (data.sensorVoltage) {
+                        totalVoltage += parseFloat(data.sensorVoltage);
+                        voltageCount++;
+                    } else if (data.vol) {
+                        totalVoltage += parseFloat(data.vol);
+                        voltageCount++;
+                    }
                 });
+                
+                // Store for tooltips
+                historyDataStore = store;
                 
                 // Update chart
                 updateChart(labels, values);
                 
                 // Update statistics
                 if (values.length > 0) {
-                    const avg = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
-                    document.getElementById('todayMax').innerText = maxValue + ' mm';
-                    document.getElementById('todayAvg').innerText = avg + ' mm';
+                    const avg = Math.round(totalValue / values.length);
+                    const avgVoltage = voltageCount > 0 ? (totalVoltage / voltageCount).toFixed(2) : '--';
+                    
+                    document.getElementById('todayMax').innerText = maxValue;
+                    document.getElementById('todayAvg').innerText = avg;
+                    document.getElementById('avgVoltage').innerText = avgVoltage;
+                    document.getElementById('dataPoints').innerText = values.length;
                 }
                 
                 console.log(`Loaded ${values.length} history entries`);
                 
             }, (error) => {
                 console.error('Error loading history:', error);
-                waterChart.data.labels = ['錯誤'];
-                waterChart.data.datasets[0].data = [null];
-                waterChart.update();
             });
         }
 
-        // Format time for chart display
         function formatTimeForChart(data) {
             if (data.collectionTime) {
                 const timeParts = data.collectionTime.split(' ');
                 if (timeParts.length > 1) {
-                    return timeParts[1].substring(0, 5); // HH:MM
+                    return timeParts[1].substring(0, 5);
                 }
                 return data.collectionTime.substring(0, 5);
             } else if (data.time) {
@@ -477,7 +644,6 @@
             return '--:--';
         }
 
-        // Extract level value from various data formats
         function extractLevelValue(data) {
             if (data.level !== undefined) return parseInt(data.level);
             if (data.waterLevel_mm !== undefined) return parseInt(data.waterLevel_mm);
@@ -487,57 +653,39 @@
             return 0;
         }
 
-        // Update UI with Firebase data
         function updateUIFromFirebase(data) {
-            // Extract values with proper defaults
             const level = data.level || data.waterLevel_mm || 0;
             const temp = data.temp || data.waterTemperature || '--.-';
             const sig = data.sig || data.signalStrength || '--';
-            const vol = data.vol || data.sensorVoltage || '--';
+            const sensorVol = data.vol || data.sensorVoltage || '--';
+            const relayVol = data.relayVoltage || '--';
             const time = data.time || data.collectionTime || getCurrentTimeString();
-            const deviceCode = data.deviceCode || '2025122201';
             
-            // Update display
             document.getElementById('level').innerText = level;
             document.getElementById('temp').innerText = temp;
             document.getElementById('sig_display').innerText = sig;
-            document.getElementById('vol_display').innerText = vol;
-            document.getElementById('device_display').innerText = deviceCode;
+            document.getElementById('sensor_vol_display').innerText = sensorVol;
+            document.getElementById('relay_vol_display').innerText = relayVol;
             document.getElementById('full_date').innerHTML = "⏱️ 更新時間: " + time;
-            
-            // Update last update time
             document.getElementById('lastUpdateTime').innerText = "最後頁面更新: " + new Date().toLocaleString('zh-HK');
-            
-            currentDeviceCode = deviceCode;
         }
 
-        // Update alarm logic based on Firebase data
         function updateAlarmLogic(data) {
-            // Update water level alarm
             const level = parseInt(data.level || data.waterLevel_mm || 0);
             currentLevel = (level >= 300) ? 3 : (level >= 120 ? 2 : (level >= 70 ? 1 : 0));
             
-            // Update voltage alarm
             const voltage = parseFloat(data.vol || data.sensorVoltage || 5);
             currentVolAlarm = (voltage > 0 && voltage < 3.4);
             
-            // Render alarm UI
             renderAlarmUI();
         }
 
-        // Update statistics based on latest data
-        function updateStatistics(latestData) {
-            // This will be updated when history loads
-        }
-
-        // Update chart with new data
         function updateChart(labels, values) {
             waterChart.data.labels = labels;
             waterChart.data.datasets[0].data = values;
             waterChart.update();
         }
 
-        // Render alarm box based on current state
         function renderAlarmUI() {
             const box = document.getElementById('alarm-box');
             
@@ -559,7 +707,6 @@
             }
         }
 
-        // Helper function to get current time string
         function getCurrentTimeString() {
             const now = new Date();
             const year = now.getFullYear();
@@ -572,7 +719,6 @@
             return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
         }
 
-        // Initialize data from Firebase once (for immediate display)
         function initializeFromFirebase() {
             return db.ref('latest_status').once('value')
                 .then((snapshot) => {
@@ -588,7 +734,6 @@
                 });
         }
 
-        // Refresh all data manually
         function refreshAllData() {
             const refreshBtn = document.querySelector('.refresh-btn');
             const originalText = refreshBtn.innerText;
@@ -603,7 +748,6 @@
                     refreshBtn.innerText = originalText;
                     refreshBtn.disabled = false;
                     
-                    // Show success message temporarily
                     const statusSpan = document.querySelector('#status span');
                     const originalStatus = statusSpan.innerText;
                     statusSpan.innerText = '✓ 資料已刷新';
@@ -614,7 +758,6 @@
             });
         }
 
-        // Auto-refresh chart every 30 seconds
         function startAutoRefresh() {
             if (chartUpdateTimer) {
                 clearInterval(chartUpdateTimer);
@@ -623,39 +766,32 @@
             chartUpdateTimer = setInterval(() => {
                 console.log('Auto-refreshing chart...');
                 loadHistoryData(chartDataLimit);
-            }, 30000); // Refresh every 30 seconds
+            }, 30000);
         }
 
         // ==================== INITIALIZATION ====================
 
-        // Start the application
         function init() {
-            console.log('Initializing Firebase display...');
+            console.log('Initializing Firebase display with enhanced tooltips...');
             
-            // Show loading state
             document.getElementById('level').innerText = '--';
             
-            // Initialize data
             initializeFromFirebase().then(() => {
                 loadHistoryData(chartDataLimit);
                 startAutoRefresh();
             });
             
-            // Setup real-time listeners
             setupFirebaseListeners();
         }
 
-        // Run initialization when page loads
         window.addEventListener('load', init);
 
-        // Clean up on page unload
         window.addEventListener('beforeunload', () => {
             if (chartUpdateTimer) {
                 clearInterval(chartUpdateTimer);
             }
         });
 
-        // Make functions available globally
         window.loadHistoryData = loadHistoryData;
         window.refreshAllData = refreshAllData;
 
