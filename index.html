@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能水位監控 - 互動增強版</title>
+    <title>智能水位監控 - V13.9.1 通訊強化版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
@@ -14,33 +14,27 @@
         body { font-family: 'Segoe UI', sans-serif; background: #000; color: #fff; margin: 0; padding: 15px; transition: background 0.8s; min-height: 100vh; }
         .status-bar { padding: 10px; font-size: 14px; text-align: center; margin-bottom: 15px; border-radius: 8px; font-weight: bold; border: 1px solid transparent; display: flex; justify-content: space-between; align-items: center; }
         .online { background: rgba(0, 68, 0, 0.8); color: #00ff00; border-color: #00ff00; }
+        
+        /* 探針指示圓點 */
+        .probe-indicator { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #888; margin-bottom: 10px; }
+        #probe-dot { width: 12px; height: 12px; border-radius: 50%; background: #333; transition: 0.3s; }
+        .dot-red { background: #ff0000 !important; box-shadow: 0 0 10px #ff0000 !important; }
+        .dot-gray { background: #333 !important; box-shadow: none !important; }
+
         .main-display { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px; }
         .label { font-size: 12px; color: #888; letter-spacing: 1px; text-transform: uppercase; }
         .value { font-size: 80px; font-weight: bold; color: #00ff00; line-height: 1; }
         .unit { font-size: 24px; color: #00ff00; margin-left: 5px; }
-        .sub-data { display: flex; justify-content: space-between; font-size: 12px; color: #666; margin-top: 10px; }
+        
+        .sub-data { display: flex; flex-wrap: wrap; justify-content: space-between; font-size: 12px; color: #666; margin-top: 10px; gap: 10px; }
+        .data-item { flex: 1 1 45%; }
+        .dim-gray { color: #444 !important; font-weight: normal !important; }
+
         #alarm-box { display: none; padding: 15px; margin: 10px 0; border-radius: 8px; text-align: center; font-size: 18px; font-weight: bold; animation: blink 1.5s infinite; }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
         
-        /* 圖表容器 */
         .chart-container { background: #111; padding: 15px; border-radius: 10px; height: 350px; position: relative; cursor: crosshair; }
-        
-        /* 懸浮大地顯示視窗 (浮動在鼠標旁) */
-        #floating-tooltip {
-            position: absolute;
-            display: none;
-            background: rgba(20, 20, 20, 0.95);
-            border: 2px solid #00ff00;
-            color: #fff;
-            padding: 12px;
-            border-radius: 8px;
-            pointer-events: none;
-            z-index: 1000;
-            box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
-            min-width: 180px;
-        }
-        .tooltip-date { color: #aaa; font-size: 12px; margin-bottom: 4px; }
-        .tooltip-val { color: #00ff00; font-size: 24px; font-weight: bold; }
+        #floating-tooltip { position: absolute; display: none; background: rgba(20, 20, 20, 0.95); border: 2px solid #00ff00; color: #fff; padding: 12px; border-radius: 8px; pointer-events: none; z-index: 1000; min-width: 180px; }
     </style>
 </head>
 <body>
@@ -53,6 +47,11 @@
     <div id="alarm-box"></div>
 
     <div class="main-display">
+        <div class="probe-indicator">
+            <div id="probe-dot"></div>
+            <span id="probe-text">探針狀態: 讀取中</span>
+        </div>
+
         <div class="label">REAL-TIME WATER LEVEL</div>
         <div style="display:flex; align-items:baseline;">
             <div id="level" class="value">--</div>
@@ -63,9 +62,10 @@
         <div id="temp" style="font-size: 30px; font-weight: bold; color: #00ffff;">--.- °C</div>
 
         <div class="sub-data">
-            <div id="full_date">更新時間: 讀取中...</div>
-            <span>訊號: <span id="sig_display">--</span> dBm</span>
-            <span>電壓: <span id="vol_display">--</span> V</span>
+            <div id="full_date" style="width:100%; margin-bottom:5px;">更新時間: 讀取中...</div>
+            <div class="data-item">4G訊號: <span id="sig_display">--</span> dBm</div>
+            <div class="data-item">LoRa強度: <span id="lora_display" style="font-weight:bold;">--</span></div>
+            <div class="data-item">設備電壓: <span id="vol_display">--</span> V</div>
         </div>
     </div>
 
@@ -95,39 +95,20 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {
-                        x: { 
-                            reverse: true, // 時間由右至左
-                            ticks: { 
-                                color: '#666', 
-                                font: { size: 9 },
-                                maxRotation: 45,
-                                minRotation: 45 
-                            } 
-                        },
+                        x: { reverse: true, ticks: { color: '#666', font: { size: 9 }, maxRotation: 45, minRotation: 45 } },
                         y: { beginAtZero: true, ticks: { color: '#444' } }
                     },
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: { enabled: false } // 禁用預設，改用自定義
-                    },
-                    // 當滑鼠移動或按下時觸發
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
                     onHover: (event, elements) => {
                         const tooltip = document.getElementById('floating-tooltip');
                         if (elements.length > 0) {
                             const index = elements[0].index;
                             const fullLabel = waterChart.data.labels[index];
                             const val = waterChart.data.datasets[0].data[index];
-                            
                             tooltip.style.display = 'block';
-                            tooltip.style.left = (event.x + 20) + 'px';
-                            tooltip.style.top = (event.y - 40) + 'px';
-                            tooltip.innerHTML = `
-                                <div class="tooltip-date">${fullLabel}</div>
-                                <div class="tooltip-val">${val} <span style="font-size:14px">mm</span></div>
-                            `;
-                        } else {
-                            tooltip.style.display = 'none';
-                        }
+                            tooltip.style.left = (event.x + 20) + 'px'; tooltip.style.top = (event.y - 40) + 'px';
+                            tooltip.innerHTML = `<div style="color:#aaa;font-size:12px">${fullLabel}</div><div style="color:#00ff00;font-size:24px;font-weight:bold">${val} mm</div>`;
+                        } else { tooltip.style.display = 'none'; }
                     }
                 }
             });
@@ -135,22 +116,15 @@
 
         function setupFirebaseListeners() {
             db.ref('latest_status').on('value', (s) => { if(s.val()) updateUI(s.val()); });
-
-            // 增量更新歷史數據
             db.ref('history').limitToLast(chartDataLimit).on('child_added', (snapshot) => {
                 const d = snapshot.val();
                 const level = d.level !== undefined ? d.level : Math.round(parseFloat(d.waterLevel || 0) * 1000);
-                
-                // X軸標籤包含完整日期，換行顯示以節省空間
-                const fullTime = d.time || "";
+                const fullTime = d.time || d.collectionTime || "";
                 const label = fullTime.includes(' ') ? fullTime.replace(' ', '\n') : fullTime;
-                
                 waterChart.data.labels.push(label);
                 waterChart.data.datasets[0].data.push(level);
-
                 if (waterChart.data.labels.length > chartDataLimit) {
-                    waterChart.data.labels.shift();
-                    waterChart.data.datasets[0].data.shift();
+                    waterChart.data.labels.shift(); waterChart.data.datasets[0].data.shift();
                 }
                 waterChart.update('none');
             });
@@ -160,11 +134,40 @@
             const level = data.level !== undefined ? data.level : Math.round(parseFloat(data.waterLevel || 0) * 1000);
             document.getElementById('level').innerText = level;
             document.getElementById('temp').innerText = (data.temp || data.waterTemperature || "--") + " °C";
-            document.getElementById('sig_display').innerText = data.sig || data.signalStrength || "--";
-            document.getElementById('vol_display').innerText = data.vol || data.sensorVoltage || "--";
-            document.getElementById('full_date').innerText = "更新時間: " + (data.time || "--");
+            document.getElementById('sig_display').innerText = data.signalStrength || data.sig || "--";
+            document.getElementById('vol_display').innerText = data.sensorVoltage || data.vol || "--";
+            document.getElementById('full_date').innerText = "更新時間: " + (data.time || data.collectionTime || "--");
+
+            // 2. LoRa 訊號處理更新
+            const loraDisplay = document.getElementById('lora_display');
+            const alarm = parseInt(data.alarmCode || 0);
+            const loraRaw = parseInt(data.Lora_RSSI || 0);
             
-            // 警報邏輯
+            // 邏輯：通訊中斷(1,3) 或 RSSI 為 0 時顯示暗灰色
+            if (alarm === 1 || alarm === 3 || loraRaw === 0) {
+                loraDisplay.innerText = (alarm === 1 || alarm === 3) ? "通信中斷" : "0%";
+                loraDisplay.className = "dim-gray"; // 使用 CSS 暗灰色樣式
+            } else {
+                const loraPct = Math.round((loraRaw / 255) * 100);
+                loraDisplay.innerText = loraPct + "%";
+                loraDisplay.className = ""; // 恢復預設（亮色）
+                loraDisplay.style.color = loraPct > 20 ? "#00ff00" : "#ff0";
+            }
+
+            // 3. 探針指示燈處理
+            const dot = document.getElementById('probe-dot');
+            const pText = document.getElementById('probe-text');
+            if (alarm === 2) {
+                dot.className = "dot-red";
+                pText.innerText = "探針狀態: 檢測到水";
+                pText.style.color = "#ff0000";
+            } else {
+                dot.className = "dot-gray";
+                pText.innerText = (alarm === 1 || alarm === 3) ? "探針狀態: 通訊故障" : "探針狀態: 待機";
+                pText.style.color = "#888";
+            }
+
+            // 4. 背景警報邏輯
             let lv = (level >= 300) ? 3 : (level >= 120 ? 2 : (level >= 70 ? 1 : 0));
             const box = document.getElementById('alarm-box');
             if (lv > 0) {
