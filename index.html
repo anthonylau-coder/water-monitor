@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能水位監控 - V13.9.1 通訊強化版</title>
+    <title>智能水位監控 - V13.9.2 通訊修正版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
@@ -131,6 +131,7 @@
         }
 
         function updateUI(data) {
+            // 1. 基礎數據解析
             const level = data.level !== undefined ? data.level : Math.round(parseFloat(data.waterLevel || 0) * 1000);
             document.getElementById('level').innerText = level;
             document.getElementById('temp').innerText = (data.temp || data.waterTemperature || "--") + " °C";
@@ -138,23 +139,32 @@
             document.getElementById('vol_display').innerText = data.sensorVoltage || data.vol || "--";
             document.getElementById('full_date').innerText = "更新時間: " + (data.time || data.collectionTime || "--");
 
-            // 2. LoRa 訊號處理更新
+            // 2. LoRa 訊號修正處理 (修正 0% 問題)
             const loraDisplay = document.getElementById('lora_display');
             const alarm = parseInt(data.alarmCode || 0);
-            const loraRaw = parseInt(data.Lora_RSSI || 0);
             
-            // 邏輯：通訊中斷(1,3) 或 RSSI 為 0 時顯示暗灰色
-            if (alarm === 1 || alarm === 3 || loraRaw === 0) {
-                loraDisplay.innerText = (alarm === 1 || alarm === 3) ? "通信中斷" : "0%";
-                loraDisplay.className = "dim-gray"; // 使用 CSS 暗灰色樣式
+            // 強制轉換數據類型，防止 Firebase 傳回字串導致計算出錯
+            let loraRaw = data.lora;
+            if (typeof loraRaw === 'string') loraRaw = parseInt(loraRaw.trim());
+            else loraRaw = parseInt(loraRaw || 0);
+
+            // 邏輯判定：若 alarmCode 為 1 或 3，視為中斷
+            if (alarm === 1 || alarm === 3) {
+                loraDisplay.innerText = "通信中斷";
+                loraDisplay.className = "dim-gray";
+            } else if (loraRaw === 0 && alarm !== 0) {
+                // 如果 RSSI 是 0 且並非待機狀態，也視為異常變暗
+                loraDisplay.innerText = "0%";
+                loraDisplay.className = "dim-gray";
             } else {
+                // 正常換算百分比 (0-255 -> 0-100%)
                 const loraPct = Math.round((loraRaw / 255) * 100);
                 loraDisplay.innerText = loraPct + "%";
-                loraDisplay.className = ""; // 恢復預設（亮色）
-                loraDisplay.style.color = loraPct > 20 ? "#00ff00" : "#ff0";
+                loraDisplay.className = ""; // 移除變暗樣式
+                loraDisplay.style.color = loraPct > 20 ? "#00ff00" : "#ffbb00";
             }
 
-            // 3. 探針指示燈處理
+            // 3. 探針指示燈處理 (alarmCode: 0=無水, 2=有水)
             const dot = document.getElementById('probe-dot');
             const pText = document.getElementById('probe-text');
             if (alarm === 2) {
@@ -167,7 +177,7 @@
                 pText.style.color = "#888";
             }
 
-            // 4. 背景警報邏輯
+            // 4. 背景警報邏輯 (Lv.1-3)
             let lv = (level >= 300) ? 3 : (level >= 120 ? 2 : (level >= 70 ? 1 : 0));
             const box = document.getElementById('alarm-box');
             if (lv > 0) {
