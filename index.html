@@ -107,7 +107,7 @@
                             const val = waterChart.data.datasets[0].data[index];
                             tooltip.style.display = 'block';
                             tooltip.style.left = (event.x + 20) + 'px'; tooltip.style.top = (event.y - 40) + 'px';
-                            tooltip.innerHTML = `<div style="color:#aaa;font-size:12px">${fullLabel}</div><div style="color:#00ff00;font-size:24px;font-weight:bold">${val} mm</div>`;
+                            tooltip.innerHTML = `<div style="color:#aaa;font-size:12px">${fullLabel}</div><div style="color:#00ff00;font-size:24px;font-weight:bold">${val}*1000 mm</div>`;
                         } else { tooltip.style.display = 'none'; }
                     }
                 }
