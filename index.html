@@ -104,7 +104,7 @@
                         if (elements.length > 0) {
                             const index = elements[0].index;
                             const fullLabel = waterChart.data.labels[index];
-                            const val = waterChart.data.datasets[0].data[index];
+                            const val = waterChart.data.datasets[0].data[index]*1000;
                             tooltip.style.display = 'block';
                             tooltip.style.left = (event.x + 20) + 'px'; tooltip.style.top = (event.y - 40) + 'px';
                             tooltip.innerHTML = `<div style="color:#aaa;font-size:12px">${fullLabel}</div><div style="color:#00ff00;font-size:24px;font-weight:bold">${val} mm</div>`;
