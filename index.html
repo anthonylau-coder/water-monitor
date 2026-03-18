@@ -64,7 +64,7 @@
         <div class="sub-data">
             <div id="full_date" style="width:100%; margin-bottom:5px;">更新時間: 讀取中...</div>
             <div class="data-item">4G訊號: <span id="sig_display">--</span> %</div>
-            <!-- <div class="data-item">LoRa強度: <span id="lora_display" style="font-weight:bold;">--</span></div> -->
+            <div class="data-item"><!-- LoRa強度:  --> <span id="lora_display" style="font-weight:bold;"></span></div>
             <div class="data-item">設備電壓: <span id="relayVolt_display">--</span> V</div>
         </div>
     </div>
@@ -146,7 +146,7 @@
             document.getElementById('full_date').innerText = "更新時間: " + (data.time || data.collectionTime || "--");
 
             // 2. LoRa 訊號修正處理 (還原 data.lora 寫法)
-            //const loraDisplay = document.getElementById('lora_display');
+            const loraDisplay = document.getElementById('lora_display');
             const alarm = parseInt(data.alarmCode || 0);
             
             let loraRaw = data.lora;
