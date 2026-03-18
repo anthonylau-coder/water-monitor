@@ -167,8 +167,8 @@
             }
 
             // 3. 探針指示燈處理
-            const dot = document.getElementById('probe-dot');
-            const pText = document.getElementById('probe-text');
+            let dot = document.getElementById('probe-dot');
+            let pText = document.getElementById('probe-text');
             if (alarm === 2) {
                 dot.className = "dot-red";
                 pText.innerText = "探針狀態: 檢測到水";
@@ -181,7 +181,7 @@
 
             // 4. 背景警報邏輯
             let lv = (level >= 300) ? 3 : (level >= 120 ? 2 : (level >= 70 ? 1 : 0));
-            const box = document.getElementById('alarm-box');
+            let box = document.getElementById('alarm-box');
             if (lv > 0) {
                 box.style.display = "block";
                 box.innerText = "【警告】水位異常 Lv." + lv;
