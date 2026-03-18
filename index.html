@@ -167,24 +167,32 @@
             }
 
             // 3. 探針指示燈處理
+            const probeDot = document.getElementById('probe-dot');
+            const probeText = document.getElementById('probe-text');
+            
+            // Remove existing dot classes
+            probeDot.classList.remove('dot-red', 'dot-gray');
+            
             if (alarm === 2) {
-                document.getElementById('probe-dot').className = "dot-red";
-                document.getElementById('probe-text').innerText = "探針狀態: 檢測到水";
-                document.getElementById('probe-text').style.color = "#ff0000";
+                probeDot.classList.add('dot-red');
+                probeText.innerText = "探針狀態: 檢測到水";
+                probeText.style.color = "#ff0000";
             } else {
-                document.getElementById('probe-dot').className = "dot-gray";
-                document.getElementById('probe-text').innerText = (alarm === 1 || alarm === 3) ? "探針狀態: 通訊故障" : "探針狀態: 待機";
-                document.getElementById('probe-text').style.color = "#888";
+                probeDot.classList.add('dot-gray');
+                probeText.innerText = (alarm === 1 || alarm === 3) ? "探針狀態: 通訊故障" : "探針狀態: 待機";
+                probeText.style.color = "#888";
             }
 
             // 4. 背景警報邏輯
             let lv = (level >= 300) ? 3 : (level >= 120 ? 2 : (level >= 70 ? 1 : 0));
+            const alarmBox = document.getElementById('alarm-box');
+            
             if (lv > 0) {
-                document.getElementById('alarm-box').style.display = "block";
-                document.getElementById('alarm-box').innerText = "【警告】水位異常 Lv." + lv;
+                alarmBox.style.display = "block";
+                alarmBox.innerText = "【警告】水位異常 Lv." + lv;
                 document.body.style.background = ["", "#443300", "#663300", "#660000"][lv];
             } else {
-                document.getElementById('alarm-box').style.display = "none";
+                alarmBox.style.display = "none";
                 document.body.style.background = "#000";
             }
         }
