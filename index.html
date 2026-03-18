@@ -157,7 +157,8 @@
                 loraDisplay.innerText = "通信中斷";
                 loraDisplay.className = "dim-gray";
             } else if (loraRaw === 0 && alarm !== 0) {
-                loraDisplay.innerText = "0%";
+                //loraDisplay.innerText = "0%";
+                loraDisplay.innerText = " ";
                 loraDisplay.className = "dim-gray";
             } else {
                 const loraPct = Math.round((loraRaw / 255) * 100);
