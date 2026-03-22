@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能水位監控 - V13.9.5 年份修正版</title>
+    <title>智能水位監控 - 設備 2026030602 專用版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
@@ -40,7 +40,7 @@
 <body>
 
     <div id="status" class="status-bar online">
-        <span>● 已連接至 Firebase</span>
+        <span>● 已連接至 Firebase (設備: 2026030602)</span>
         <button onclick="location.reload()" style="background:none; border:none; color:#00ff00; cursor:pointer; font-size:16px;">🔄</button>
     </div>
     
@@ -64,20 +64,18 @@
         <div class="sub-data">
             <div id="full_date" style="width:100%; margin-bottom:5px;">更新時間: 讀取中...</div>
             <div class="data-item">4G訊號: <span id="sig_display">--</span> %</div>
-            <div class="data-item"><!-- LoRa強度:  --> <span id="lora_display" style="font-weight:bold;"></span></div>
+            <div class="data-item"><span id="lora_display" style="font-weight:bold;"></span></div>
             <div class="data-item">設備電壓: <span id="relayVolt_display">--</span> V</div>
         </div>
     </div>
 
     <div class="chart-container" id="chart-area">
-        <div class="label">水位歷史趨勢 (僅顯示 2026 年數據)</div>
+        <div class="label">水位歷史趨勢 (2026 年數據)</div>
         <div id="floating-tooltip"></div>
         <canvas id="waterChart"></canvas>
     </div>
 
     <script>
-    	const TARGET_DEVICE_CODE = "2026030602";
-    
         const firebaseConfig = {
             apiKey: "AIzaSyBAzQFLLDACisyZN6CEIFunkA2by0LzocE",
             databaseURL: "https://water-monitor-system-cbccd-default-rtdb.asia-southeast1.firebasedatabase.app"
@@ -87,6 +85,7 @@
 
         let waterChart;
         const chartDataLimit = 30;
+        const targetDeviceCode = '2026030602'; // 設定目標設備 ID
 
         function initChart() {
             const ctx = document.getElementById('waterChart').getContext('2d');
@@ -117,57 +116,57 @@
         }
 
         function setupFirebaseListeners() {
-            // Filter latest_status by deviceCode
+            // 1. 監聽最新狀態，並智能過濾目標設備
             db.ref('latest_status').on('value', (s) => { 
-                const allData = s.val();
-                if (allData) {
-                    // Find the data for target device
-                    const targetData = allData[TARGET_DEVICE_CODE];
-                    if (targetData) {
-                        updateUI(targetData);
-                    } else {
-                        console.log(`No data found for device: ${TARGET_DEVICE_CODE}`);
-                        showNoDataMessage();
+                const data = s.val();
+                if (!data) return;
+
+                if (data.deviceCode === targetDeviceCode) {
+                    updateUI(data);
+                } else if (data[targetDeviceCode]) {
+                    // 處理結構為 latest_status/2026030602 的情況
+                    updateUI(data[targetDeviceCode]);
+                } else {
+                    // 若是一包含有多個設備的物件陣列/字典，則尋找符合的設備
+                    for (const key in data) {
+                        if (data[key] && data[key].deviceCode === targetDeviceCode) {
+                            updateUI(data[key]);
+                            break;
+                        }
                     }
                 }
             });
             
-            // 完全還原 V13.9.2 邏輯，僅加入日期過濾 if 判斷
-            db.ref('history').limitToLast(100).on('child_added', (snapshot) => {
+            // 2. 監聽歷史數據，透過 Firebase 查詢語法精準調用設備數據
+            db.ref('history')
+              .orderByChild('deviceCode')
+              .equalTo(targetDeviceCode)
+              .limitToLast(100)
+              .on('child_added', (snapshot) => {
                 const d = snapshot.val();
+                
+                // 雙重保險：萬一 Firebase 未設索引導致抓回全部資料，前端再次過濾
+                if (d.deviceCode !== targetDeviceCode) return;
+
                 const fullTime = d.time || d.collectionTime || "";
                 
-                // Check if this record belongs to target device
-                if (d.deviceCode !== TARGET_DEVICE_CODE) return;                
-                
-                // --- 僅有的新增邏輯：排除非 2026 年數據 ---
+                // --- 排除非 2026 年數據 ---
                 if (!fullTime.startsWith('2026')) return;
 
                 const level = d.level !== undefined ? d.level : Math.round(parseFloat(d.waterLevel || 0) * 1000);
                 const label = fullTime.includes(' ') ? fullTime.replace(' ', '\n') : fullTime;
                 waterChart.data.labels.push(label);
                 waterChart.data.datasets[0].data.push(level);
+                
                 if (waterChart.data.labels.length > chartDataLimit) {
-                    waterChart.data.labels.shift();
+                    waterChart.data.labels.shift(); 
                     waterChart.data.datasets[0].data.shift();
                 }
                 waterChart.update('none');
             });
         }
 
-        function showNoDataMessage() {
-            document.getElementById('level').innerText = '--';
-            document.getElementById('temp').innerText = '--.- °C';
-            document.getElementById('sig_display').innerText = '--';
-            document.getElementById('lora_display').innerText = ' ';
-            document.getElementById('relayVolt_display').innerText = '--';
-            document.getElementById('full_date').innerText = '更新時間: 無數據';
-            document.getElementById('probe-text').innerText = '探針狀態: 無數據';
-            document.getElementById('probe-dot').className = 'dot-gray';
-        }
-
         function updateUI(data) {
-            // 完全還原 V13.9.2 邏輯 (包含正確的 data.lora 讀取)
             const level = data.level !== undefined ? data.level : Math.round(parseFloat(data.waterLevel || 0) * 1000);
             document.getElementById('level').innerText = level;
             document.getElementById('temp').innerText = (data.temp || data.waterTemperature || "--") + " °C";
@@ -175,7 +174,7 @@
             document.getElementById('relayVolt_display').innerText = data.relayVoltage || data.relayVolt || "--";
             document.getElementById('full_date').innerText = "更新時間: " + (data.time || data.collectionTime || "--");
 
-            // 2. LoRa 訊號修正處理 (還原 data.lora 寫法)
+            // LoRa 訊號修正處理
             const loraDisplay = document.getElementById('lora_display');
             const alarm = parseInt(data.alarmCode || 0);
             
@@ -187,22 +186,19 @@
                 loraDisplay.innerText = "通信中斷";
                 loraDisplay.className = "dim-gray";
             } else if (loraRaw === 0 && alarm !== 0) {
-                //loraDisplay.innerText = "0%";
                 loraDisplay.innerText = " ";
                 loraDisplay.className = "dim-gray";
             } else {
                 const loraPct = Math.round((loraRaw / 255) * 100);
-                //loraDisplay.innerText = loraPct + "%";
                 loraDisplay.innerText = " ";
                 loraDisplay.className = "";
                 loraDisplay.style.color = loraPct > 20 ? "#00ff00" : "#ffbb00";
             }
 
-            // 3. 探針指示燈處理
+            // 探針指示燈處理
             const probeDot = document.getElementById('probe-dot');
             const probeText = document.getElementById('probe-text');
             
-            // Remove existing dot classes
             probeDot.classList.remove('dot-red', 'dot-gray');
             
             if (alarm === 2) {
@@ -215,7 +211,7 @@
                 probeText.style.color = "#888";
             }
 
-            // 4. 背景警報邏輯
+            // 背景警報邏輯
             let lv = (level >= 300) ? 3 : (level >= 120 ? 2 : (level >= 70 ? 1 : 0));
             const alarmBox = document.getElementById('alarm-box');
             
