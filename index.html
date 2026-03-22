@@ -149,7 +149,7 @@
             // 完全還原 V13.9.2 邏輯 (包含正確的 data.lora 讀取)
             const level = data.level !== undefined ? data.level : Math.round(parseFloat(data.waterLevel || 0) * 1000);
             document.getElementById('level').innerText = level;
-            document.getElementById('temp').innerText = (data.temp || data.waterTemperature || "--") + " °C";
+            document.getElementById('temp').innerText = (data.temperature || data.waterTemperature || "--") + " °C";
             document.getElementById('sig_display').innerText = data.signalStrength || data.sig || "--";
             document.getElementById('relayVolt_display').innerText = data.relayVoltage || data.relayVolt || "--";
             document.getElementById('full_date').innerText = "更新時間: " + (data.time || data.collectionTime || "--");
