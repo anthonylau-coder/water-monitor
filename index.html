@@ -126,8 +126,8 @@
                     if (targetData) {
                         updateUI(targetData);
                     } else {
-                        console.log(`No data found for device: ${TARGET_DEVICE_CODE}`);
-                        showNoDataMessage();
+                        //console.log(`No data found for device: ${TARGET_DEVICE_CODE}`);
+                        //showNoDataMessage();
                     }
                 }
             });
@@ -153,6 +153,17 @@
                 }
                 waterChart.update('none');
             });
+        }
+
+        function showNoDataMessage() {
+            document.getElementById('level').innerText = '--';
+            document.getElementById('temp').innerText = '--.- °C';
+            document.getElementById('sig_display').innerText = '--';
+            document.getElementById('lora_display').innerText = ' ';
+            document.getElementById('relayVolt_display').innerText = '--';
+            document.getElementById('full_date').innerText = '更新時間: 無數據';
+            document.getElementById('probe-text').innerText = '探針狀態: 無數據';
+            document.getElementById('probe-dot').className = 'dot-gray';
         }
 
         function updateUI(data) {
