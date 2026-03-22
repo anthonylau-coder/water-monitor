@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能水位監控 - 歷史同步版</title>
+    <title>智能水位監控 - V13.9.5 年份修正版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
@@ -36,13 +36,7 @@
         #floating-tooltip { position: absolute; display: none; background: rgba(20, 20, 20, 0.95); border: 2px solid #00ff00; color: #fff; padding: 12px; border-radius: 8px; pointer-events: none; z-index: 1000; min-width: 180px; }
     </style>
 </head>
-<body>
-
-    <div id="status" class="status-bar online">
-        <span>● 數據來源: History (設備 2026030602)</span>
-        <button onclick="location.reload()" style="background:none; border:none; color:#00ff00; cursor:pointer; font-size:16px;">🔄</button>
-    </div>
-    
+<body>    
     <div id="alarm-box"></div>
 
     <div class="main-display">
@@ -51,7 +45,7 @@
             <span id="probe-text">探針狀態: 等待數據...</span>
         </div>
 
-        <div class="label">REAL-TIME WATER LEVEL (FROM HISTORY)</div>
+        <div class="label">REAL-TIME WATER LEVEL</div>
         <div style="display:flex; align-items:baseline;">
             <div id="level" class="value">--</div>
             <div class="unit">mm</div>
