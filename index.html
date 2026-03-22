@@ -147,7 +147,8 @@
 
         function updateUI(data) {
             // 完全還原 V13.9.2 邏輯 (包含正確的 data.lora 讀取)
-            const level = data.waterLevel !== undefined ? data.waterLevel : Math.round(parseFloat(data.waterLevel || 0) * 1000);
+            //const level = data.waterLevel !== undefined ? data.waterLevel : Math.round(parseFloat(data.waterLevel || 0) * 1000);
+            const level = Math.round(parseFloat(data.waterLevel || 0) * 1000);
             document.getElementById('level').innerText = level;
             document.getElementById('temp').innerText = (data.temperature || data.waterTemperature || "--") + " °C";
             document.getElementById('sig_display').innerText = data.signalStrength || data.sig || "--";
