@@ -126,8 +126,8 @@
                     if (targetData) {
                         updateUI(targetData);
                     } else {
-                        //console.log(`No data found for device: ${TARGET_DEVICE_CODE}`);
-                        //showNoDataMessage();
+                        console.log(`No data found for device: ${TARGET_DEVICE_CODE}`);
+                        showNoDataMessage();
                     }
                 }
             });
@@ -138,7 +138,7 @@
                 const fullTime = d.time || d.collectionTime || "";
                 
                 // Check if this record belongs to target device
-                //if (d.deviceCode !== TARGET_DEVICE_CODE) return;                
+                if (d.deviceCode !== TARGET_DEVICE_CODE) return;                
                 
                 // --- 僅有的新增邏輯：排除非 2026 年數據 ---
                 if (!fullTime.startsWith('2026')) return;
