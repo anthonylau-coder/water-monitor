@@ -134,8 +134,7 @@
                 // --- 僅有的新增邏輯：排除非 2026 年數據 ---
                 if (!fullTime.startsWith('2026')) return;
 
-                //const level = d.waterLevel !== undefined ? d.waterLevel : Math.round(parseFloat(d.waterLevel || 0) * 1000);
-                const level = Math.round(parseFloat(d.waterLevel || 0) * 1000);
+                const level = d.waterLevel !== undefined ? d.waterLevel : Math.round(parseFloat(d.waterLevel || 0) * 1000);
                 const label = fullTime.includes(' ') ? fullTime.replace(' ', '\n') : fullTime;
                 waterChart.data.labels.push(label);
                 waterChart.data.datasets[0].data.push(level);
@@ -148,8 +147,7 @@
 
         function updateUI(data) {
             // 完全還原 V13.9.2 邏輯 (包含正確的 data.lora 讀取)
-            //const level = data.waterLevel !== undefined ? data.waterLevel : Math.round(parseFloat(data.waterLevel || 0) * 1000);
-            const level = Math.round(parseFloat(d.waterLevel || 0) * 1000);
+            const level = data.waterLevel !== undefined ? data.waterLevel : Math.round(parseFloat(data.waterLevel || 0) * 1000);
             document.getElementById('level').innerText = level;
             document.getElementById('temp').innerText = (data.temperature || data.waterTemperature || "--") + " °C";
             document.getElementById('sig_display').innerText = data.signalStrength || data.sig || "--";
