@@ -15,6 +15,7 @@
         .status-bar { padding: 10px; font-size: 14px; text-align: center; margin-bottom: 15px; border-radius: 8px; font-weight: bold; border: 1px solid transparent; display: flex; justify-content: space-between; align-items: center; }
         .online { background: rgba(0, 68, 0, 0.8); color: #00ff00; border-color: #00ff00; }
         
+        /* 探針指示圓點 */
         .probe-indicator { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #888; margin-bottom: 10px; }
         .probe-dot { width: 12px; height: 12px; border-radius: 50%; background: #333; transition: 0.3s; }
         #probe-dot.dot-red { background: #ff0000 !important; box-shadow: 0 0 10px #ff0000 !important; }
@@ -48,10 +49,10 @@
     <div class="main-display">
         <div class="probe-indicator">
             <div id="probe-dot"></div>
-            <span id="probe-text">探針狀態: 等待數據...</span>
+            <span id="probe-text">探針狀態: 讀取中</span>
         </div>
 
-        <div class="label">REAL-TIME WATER LEVEL (FROM HISTORY)</div>
+        <div class="label">REAL-TIME WATER LEVEL</div>
         <div style="display:flex; align-items:baseline;">
             <div id="level" class="value">--</div>
             <div class="unit">mm</div>
@@ -61,14 +62,15 @@
         <div id="temp" style="font-size: 30px; font-weight: bold; color: #00ffff;">--.- °C</div>
 
         <div class="sub-data">
-            <div id="full_date" style="width:100%; margin-bottom:5px;">最後紀錄時間: 讀取中...</div>
+            <div id="full_date" style="width:100%; margin-bottom:5px;">更新時間: 讀取中...</div>
             <div class="data-item">4G訊號: <span id="sig_display">--</span> %</div>
+            <div class="data-item"><!-- LoRa強度:  --> <span id="lora_display" style="font-weight:bold;"></span></div>
             <div class="data-item">設備電壓: <span id="relayVolt_display">--</span> V</div>
         </div>
     </div>
 
     <div class="chart-container" id="chart-area">
-        <div class="label">水位歷史趨勢 (2026 年數據)</div>
+        <div class="label">水位歷史趨勢 (僅顯示 2026 年數據)</div>
         <div id="floating-tooltip"></div>
         <canvas id="waterChart"></canvas>
     </div>
@@ -83,7 +85,6 @@
 
         let waterChart;
         const chartDataLimit = 30;
-        const targetDeviceCode = "2026030602";
 
         function initChart() {
             const ctx = document.getElementById('waterChart').getContext('2d');
@@ -91,7 +92,8 @@
                 type: 'line',
                 data: { labels: [], datasets: [{ data: [], borderColor: '#00ff00', backgroundColor: 'rgba(0, 255, 0, 0.1)', fill: true, tension: 0.3, pointHoverRadius: 8 }] },
                 options: {
-                    responsive: true, maintainAspectRatio: false,
+                    responsive: true,
+                    maintainAspectRatio: false,
                     scales: {
                         x: { reverse: true, ticks: { color: '#666', font: { size: 9 }, maxRotation: 45, minRotation: 45 } },
                         y: { beginAtZero: true, ticks: { color: '#444' } }
@@ -102,7 +104,7 @@
                         if (elements.length > 0) {
                             const index = elements[0].index;
                             const fullLabel = waterChart.data.labels[index];
-                            const val = waterChart.data.datasets[0].data[index]; // 這裡已經是 mm
+                            const val = waterChart.data.datasets[0].data[index]*1000;
                             tooltip.style.display = 'block';
                             tooltip.style.left = (event.x + 20) + 'px'; tooltip.style.top = (event.y - 40) + 'px';
                             tooltip.innerHTML = `<div style="color:#aaa;font-size:12px">${fullLabel}</div><div style="color:#00ff00;font-size:24px;font-weight:bold">${val} mm</div>`;
@@ -113,7 +115,6 @@
         }
 
         function setupFirebaseListeners() {
-            // 統一從 history 監聽
             db.ref('history')
               .orderByChild('deviceCode')
               .equalTo(targetDeviceCode)
@@ -121,43 +122,70 @@
               .on('child_added', (snapshot) => {
                 const d = snapshot.val();
                 if (!d) return;
-
+            
                 const fullTime = d.time || d.collectionTime || "";
                 if (!fullTime.startsWith('2026')) return;
-
-                // 1. 計算水位 (統一轉換為 mm)
-                const level = d.level !== undefined ? d.level : Math.round(parseFloat(d.waterLevel || 0) * 1000);
+            
+            // 完全還原 V13.9.2 邏輯，僅加入日期過濾 if 判斷
+            db.ref('history').limitToLast(100).on('child_added', (snapshot) => {
+                const d = snapshot.val();
+                const fullTime = d.time || d.collectionTime || "";
                 
-                // 2. 更新圖表
+                // --- 僅有的新增邏輯：排除非 2026 年數據 ---
+                if (!fullTime.startsWith('2026')) return;
+
+                const level = d.level !== undefined ? d.level : Math.round(parseFloat(d.waterLevel || 0) * 1000);
                 const label = fullTime.includes(' ') ? fullTime.replace(' ', '\n') : fullTime;
                 waterChart.data.labels.push(label);
                 waterChart.data.datasets[0].data.push(level);
-                
                 if (waterChart.data.labels.length > chartDataLimit) {
-                    waterChart.data.labels.shift(); 
-                    waterChart.data.datasets[0].data.shift();
+                    waterChart.data.labels.shift(); waterChart.data.datasets[0].data.shift();
                 }
                 waterChart.update('none');
-
-                // 3. 重點：將這一筆最新的歷史數據更新到上方實時 UI
+                
                 updateUI(d, level); 
             });
         }
 
-        function updateUI(data, level) {
-            // 更新主數值
+        function updateUI(data) {
+            // 完全還原 V13.9.2 邏輯 (包含正確的 data.lora 讀取)
+            const level = data.level !== undefined ? data.level : Math.round(parseFloat(data.waterLevel || 0) * 1000);
             document.getElementById('level').innerText = level;
             document.getElementById('temp').innerText = (data.temp || data.waterTemperature || "--") + " °C";
             document.getElementById('sig_display').innerText = data.signalStrength || data.sig || "--";
             document.getElementById('relayVolt_display').innerText = data.relayVoltage || data.relayVolt || "--";
-            document.getElementById('full_date').innerText = "最後紀錄時間: " + (data.time || data.collectionTime || "--");
+            document.getElementById('full_date').innerText = "更新時間: " + (data.time || data.collectionTime || "--");
 
-            // 探針與警報邏輯
+            // 2. LoRa 訊號修正處理 (還原 data.lora 寫法)
+            const loraDisplay = document.getElementById('lora_display');
             const alarm = parseInt(data.alarmCode || 0);
+            
+            let loraRaw = data.lora;
+            if (typeof loraRaw === 'string') loraRaw = parseInt(loraRaw.trim());
+            else loraRaw = parseInt(loraRaw || 0);
+
+            if (alarm === 1 || alarm === 3) {
+                loraDisplay.innerText = "通信中斷";
+                loraDisplay.className = "dim-gray";
+            } else if (loraRaw === 0 && alarm !== 0) {
+                //loraDisplay.innerText = "0%";
+                loraDisplay.innerText = " ";
+                loraDisplay.className = "dim-gray";
+            } else {
+                const loraPct = Math.round((loraRaw / 255) * 100);
+                //loraDisplay.innerText = loraPct + "%";
+                loraDisplay.innerText = " ";
+                loraDisplay.className = "";
+                loraDisplay.style.color = loraPct > 20 ? "#00ff00" : "#ffbb00";
+            }
+
+            // 3. 探針指示燈處理
             const probeDot = document.getElementById('probe-dot');
             const probeText = document.getElementById('probe-text');
             
+            // Remove existing dot classes
             probeDot.classList.remove('dot-red', 'dot-gray');
+            
             if (alarm === 2) {
                 probeDot.classList.add('dot-red');
                 probeText.innerText = "探針狀態: 檢測到水";
@@ -168,9 +196,10 @@
                 probeText.style.color = "#888";
             }
 
-            // 背景警報顏色
+            // 4. 背景警報邏輯
             let lv = (level >= 300) ? 3 : (level >= 120 ? 2 : (level >= 70 ? 1 : 0));
             const alarmBox = document.getElementById('alarm-box');
+            
             if (lv > 0) {
                 alarmBox.style.display = "block";
                 alarmBox.innerText = "【警告】水位異常 Lv." + lv;
