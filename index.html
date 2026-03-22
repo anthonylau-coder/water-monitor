@@ -35,8 +35,6 @@
         
         .chart-container { background: #111; padding: 15px; border-radius: 10px; height: 350px; position: relative; cursor: crosshair; }
         #floating-tooltip { position: absolute; display: none; background: rgba(20, 20, 20, 0.95); border: 2px solid #00ff00; color: #fff; padding: 12px; border-radius: 8px; pointer-events: none; z-index: 1000; min-width: 180px; }
-        
-        .device-info { background: rgba(0, 255, 0, 0.1); padding: 8px; border-radius: 8px; text-align: center; margin-bottom: 10px; font-size: 14px; color: #00ff00; border: 1px solid #00ff00; }
     </style>
 </head>
 <body>
@@ -78,8 +76,8 @@
     </div>
 
     <script>
-        const TARGET_DEVICE_CODE = "2026030602";
-        
+    	const TARGET_DEVICE_CODE = "2026030602";
+    
         const firebaseConfig = {
             apiKey: "AIzaSyBAzQFLLDACisyZN6CEIFunkA2by0LzocE",
             databaseURL: "https://water-monitor-system-cbccd-default-rtdb.asia-southeast1.firebasedatabase.app"
@@ -108,10 +106,9 @@
                         if (elements.length > 0) {
                             const index = elements[0].index;
                             const fullLabel = waterChart.data.labels[index];
-                            const val = waterChart.data.datasets[0].data[index] * 1000;
+                            const val = waterChart.data.datasets[0].data[index]*1000;
                             tooltip.style.display = 'block';
-                            tooltip.style.left = (event.x + 20) + 'px'; 
-                            tooltip.style.top = (event.y - 40) + 'px';
+                            tooltip.style.left = (event.x + 20) + 'px'; tooltip.style.top = (event.y - 40) + 'px';
                             tooltip.innerHTML = `<div style="color:#aaa;font-size:12px">${fullLabel}</div><div style="color:#00ff00;font-size:24px;font-weight:bold">${val} mm</div>`;
                         } else { tooltip.style.display = 'none'; }
                     }
@@ -135,16 +132,15 @@
                 }
             });
             
-            // Filter history by deviceCode
+            // 完全還原 V13.9.2 邏輯，僅加入日期過濾 if 判斷
             db.ref('history').limitToLast(100).on('child_added', (snapshot) => {
                 const d = snapshot.val();
-                
-                // Check if this record belongs to target device
-                if (d.deviceCode !== TARGET_DEVICE_CODE) return;
-                
                 const fullTime = d.time || d.collectionTime || "";
                 
-                // Filter for 2026 data only
+                // Check if this record belongs to target device
+                if (d.deviceCode !== TARGET_DEVICE_CODE) return;                
+                
+                // --- 僅有的新增邏輯：排除非 2026 年數據 ---
                 if (!fullTime.startsWith('2026')) return;
 
                 const level = d.level !== undefined ? d.level : Math.round(parseFloat(d.waterLevel || 0) * 1000);
@@ -152,22 +148,11 @@
                 waterChart.data.labels.push(label);
                 waterChart.data.datasets[0].data.push(level);
                 if (waterChart.data.labels.length > chartDataLimit) {
-                    waterChart.data.labels.shift(); 
+                    waterChart.data.labels.shift();
                     waterChart.data.datasets[0].data.shift();
                 }
                 waterChart.update('none');
             });
-        }
-
-        function showNoDataMessage() {
-            document.getElementById('level').innerText = '--';
-            document.getElementById('temp').innerText = '--.- °C';
-            document.getElementById('sig_display').innerText = '--';
-            document.getElementById('lora_display').innerText = ' ';
-            document.getElementById('relayVolt_display').innerText = '--';
-            document.getElementById('full_date').innerText = '更新時間: 無數據';
-            document.getElementById('probe-text').innerText = '探針狀態: 無數據';
-            document.getElementById('probe-dot').className = 'dot-gray';
         }
 
         function updateUI(data) {
@@ -191,10 +176,12 @@
                 loraDisplay.innerText = "通信中斷";
                 loraDisplay.className = "dim-gray";
             } else if (loraRaw === 0 && alarm !== 0) {
+                //loraDisplay.innerText = "0%";
                 loraDisplay.innerText = " ";
                 loraDisplay.className = "dim-gray";
             } else {
                 const loraPct = Math.round((loraRaw / 255) * 100);
+                //loraDisplay.innerText = loraPct + "%";
                 loraDisplay.innerText = " ";
                 loraDisplay.className = "";
                 loraDisplay.style.color = loraPct > 20 ? "#00ff00" : "#ffbb00";
@@ -231,10 +218,7 @@
             }
         }
 
-        window.onload = () => { 
-            initChart(); 
-            setupFirebaseListeners(); 
-        };
+        window.onload = () => { initChart(); setupFirebaseListeners(); };
     </script>
 </body>
 </html>
