@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>智能水位監控 - V13.9.5 年份修正版</title>
+    <title>智能水位監控</title>
     
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
@@ -70,7 +70,7 @@
     </div>
 
     <div class="chart-container" id="chart-area">
-        <div class="label">水位歷史趨勢 (僅顯示 2026 年數據)</div>
+        <div class="label">水位歷史趨勢</div>
         <div id="floating-tooltip"></div>
         <canvas id="waterChart"></canvas>
     </div>
@@ -96,7 +96,7 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {
-                        x: { reverse: true, ticks: { color: '#666', font: { size: 9 }, maxRotation: 45, minRotation: 45 } },
+                        x: { reverse: false, ticks: { color: '#666', font: { size: 9 }, maxRotation: 45, minRotation: 45 } },
                         y: { beginAtZero: true, ticks: { color: '#444' } }
                     },
                     plugins: { legend: { display: false }, tooltip: { enabled: false } },
