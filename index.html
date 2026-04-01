@@ -167,13 +167,13 @@
                 loraDisplay.innerText = "通信中斷";
                 loraDisplay.className = "dim-gray";
             } else if (loraRaw === 0 && alarm !== 0) {
-                //loraDisplay.innerText = "0%";
-                loraDisplay.innerText = " ";
+                loraDisplay.innerText = "0%";
+                //loraDisplay.innerText = " ";
                 loraDisplay.className = "dim-gray";
             } else {
                 const loraPct = Math.round((loraRaw / 255) * 100);
-                //loraDisplay.innerText = loraPct + "%";
-                loraDisplay.innerText = " ";
+                loraDisplay.innerText = loraPct + "%";
+                //loraDisplay.innerText = " ";
                 loraDisplay.className = "";
                 loraDisplay.style.color = loraPct > 20 ? "#00ff00" : "#ffbb00";
             }
