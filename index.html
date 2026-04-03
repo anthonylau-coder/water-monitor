@@ -64,7 +64,7 @@
         <div class="sub-data">
             <div id="full_date" style="width:100%; margin-bottom:5px;">更新時間: 讀取中...</div>
 			<div class="data-item">訊號: <span id="lora_display" style="font-weight:bold;">--</span></div>
-            <div class="data-item"><!-- 4G訊號: --><span id="sig_display"></span></div>
+            <!-- <div class="data-item">4G訊號: <span id="sig_display"></span></div> -->
             <div class="data-item">設備電壓: <span id="relayVolt_display">--</span> V</div>
         </div>
     </div>
@@ -151,7 +151,7 @@
             const level = Math.round(parseFloat(data.waterLevel || 0) * 1000);
             document.getElementById('level').innerText = level;
             document.getElementById('temp').innerText = (data.temperature || data.waterTemperature || "--") + " °C";
-            document.getElementById('sig_display').innerText = data.signalStrength || data.sig || "--";
+            //document.getElementById('sig_display').innerText = data.signalStrength || data.sig || "--";
 			document.getElementById('lora_display').innerText = data.loraStrength || data.lora || "--";
             document.getElementById('relayVolt_display').innerText = data.relayVoltage || data.relayVolt || "--";
             document.getElementById('full_date').innerText = "更新時間: " + (data.time || data.collectionTime || "--");
