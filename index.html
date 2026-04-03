@@ -152,6 +152,7 @@
             document.getElementById('level').innerText = level;
             document.getElementById('temp').innerText = (data.temperature || data.waterTemperature || "--") + " °C";
             document.getElementById('sig_display').innerText = data.signalStrength || data.sig || "--";
+			document.getElementById('lora_display').innerText = data.loraStrength || data.lora || "--";
             document.getElementById('relayVolt_display').innerText = data.relayVoltage || data.relayVolt || "--";
             document.getElementById('full_date').innerText = "更新時間: " + (data.time || data.collectionTime || "--");
 
